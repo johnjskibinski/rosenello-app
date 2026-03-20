@@ -6,7 +6,7 @@ import { STATUS_LABELS, STATUS_ORDER } from '@/lib/statuses'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
 
-const INSTALLERS = ['Jay W', 'Matt Burger', 'Mike', 'Joe', 'Scott', 'Ricardo', 'Mike K', 'Jeremiah Construction', 'Matus Construction', 'Richy\'s Construction']
+const INSTALLERS = ['Jay W', 'Matt Burger', 'Mike', 'Joe', 'Scott', 'Ricardo', 'Mike K', 'Jeremiah Construction', 'Matus Construction', "Richy's Construction"]
 
 const DOC_TYPES = [
   { label: 'Window Measure', id: 'ID16' },
@@ -40,17 +40,14 @@ function ScheduleForm({ type, job, onClose }: { type: 'measure' | 'install'; job
 
   const handleSave = async () => {
     setSaving(true)
-    // TODO: wire to Google Calendar next session
     await new Promise(r => setTimeout(r, 800))
     setSaving(false)
     alert(`${type === 'measure' ? 'Measure' : 'Installation'} scheduled for ${date} at ${time} — Calendar integration coming next session`)
     onClose()
   }
 
-  const label = type === 'measure' ? 'Schedule Measure' : 'Schedule Installation'
-
   return (
-    <Modal title={label} onClose={onClose}>
+    <Modal title={type === 'measure' ? 'Schedule Measure' : 'Schedule Installation'} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ fontSize: 12, color: '#888', background: '#f5f5f3', borderRadius: 6, padding: '8px 12px' }}>
           {job.customer_first} {job.customer_last} — {job.address}
@@ -88,9 +85,7 @@ function ScheduleForm({ type, job, onClose }: { type: 'measure' | 'install'; job
             style={{ width: '100%', fontSize: 13, padding: '7px 10px', borderRadius: 6, border: '1px solid #ccc', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-          <button onClick={onClose} style={{ fontSize: 12, padding: '7px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>
-            Cancel
-          </button>
+          <button onClick={onClose} style={{ fontSize: 12, padding: '7px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>Cancel</button>
           <button onClick={handleSave} disabled={!date || saving}
             style={{ fontSize: 12, padding: '7px 16px', borderRadius: 6, border: 'none', background: date ? '#036A43' : '#ccc', color: '#fff', cursor: date ? 'pointer' : 'not-allowed', fontWeight: 500 }}>
             {saving ? 'Saving...' : `Schedule ${type === 'measure' ? 'Measure' : 'Install'}`}
@@ -218,15 +213,10 @@ export default function JobDetail() {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
 
-        {/* Header */}
         <div style={{ background: '#fff', borderBottom: '1px solid #e0e0de', padding: '11px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap' }}>
-          <button onClick={() => window.history.back()} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>
-            Back
-          </button>
+          <button onClick={() => window.history.back()} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>Back</button>
           <div style={{ fontSize: 15, fontWeight: 500, color: '#1a1a1a' }}>{job.customer_first} {job.customer_last}</div>
           <span style={{ fontSize: 11, color: '#aaa' }}>{d.contractid}</span>
-
-          {/* Status dropdown */}
           <select
             value={job.lp_status}
             onChange={e => handleStatusChange(e.target.value)}
@@ -238,24 +228,20 @@ export default function JobDetail() {
             ))}
           </select>
           {statusUpdating && <span style={{ fontSize: 11, color: '#aaa' }}>Saving...</span>}
-
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <button onClick={() => setModal('measure')} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: 'pointer', fontWeight: 500 }}>
-              📐 Schedule Measure
-            </button>
-            <button onClick={() => setModal('install')} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: 'pointer', fontWeight: 500 }}>
-              🔨 Schedule Install
-            </button>
-            <button onClick={() => setModal('docs')} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: 'pointer', fontWeight: 500 }}>
-              📎 Documents
-            </button>
-            <a href={lpUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #036A43', color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>
-              Open in LP
-            </a>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            {job.measure_sheet_url && (
+              <a href={job.measure_sheet_url} target="_blank" rel="noreferrer"
+                style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #b6dfc9', background: '#f0faf5', color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>
+                📋 Measure Sheet
+              </a>
+            )}
+            <button onClick={() => setModal('measure')} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: 'pointer', fontWeight: 500 }}>📐 Schedule Measure</button>
+            <button onClick={() => setModal('install')} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: 'pointer', fontWeight: 500 }}>🔨 Schedule Install</button>
+            <button onClick={() => setModal('docs')} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: 'pointer', fontWeight: 500 }}>📎 Documents</button>
+            <a href={lpUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #036A43', color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>Open in LP</a>
           </div>
         </div>
 
-        {/* Content */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignContent: 'start' }}>
 
           <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e0e0de', padding: '14px 16px' }}>
