@@ -16,3 +16,17 @@ export async function syncJobs() {
   if (!res.ok) throw new Error('Sync failed')
   return res.json()
 }
+
+const BASE = process.env.NEXT_PUBLIC_API_URL || 'https://rosenello-production-production.up.railway.app'
+
+export async function uploadJobDocs(lpJobId: number) {
+  const res = await fetch(`${BASE}/api/jobs/${lpJobId}/upload-docs`, { method: 'POST' })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function getKpiUnitTotals() {
+  const res = await fetch(`${BASE}/api/kpi/unit-totals`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
