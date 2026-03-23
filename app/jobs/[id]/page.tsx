@@ -88,11 +88,63 @@ function ScheduleForm({ type, job, onClose }: { type: 'measure' | 'install'; job
   )
 }
 
+function StatusConfirmModal({
+  job,
+  pendingStatus,
+  onConfirm,
+  onCancel,
+  saving,
+  error,
+}: {
+  job: any
+  pendingStatus: string
+  onConfirm: () => void
+  onCancel: () => void
+  saving: boolean
+  error: string
+}) {
+  return (
+    <Modal title="Confirm Status Change" onClose={onCancel}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ fontSize: 12, color: '#666', background: '#f5f5f3', borderRadius: 6, padding: '8px 12px' }}>
+          <span style={{ fontWeight: 500 }}>Job #{job.lp_job_id}</span> — {job.customer_first} {job.customer_last}
+        </div>
+        <div style={{ fontSize: 13, color: '#333', background: '#fffbea', border: '1px solid #f4e087', borderRadius: 6, padding: '10px 14px' }}>
+          <span style={{ fontWeight: 600, color: '#b45309' }}>{job.lp_status}</span>
+          <span style={{ margin: '0 8px', color: '#aaa' }}>→</span>
+          <span style={{ fontWeight: 600, color: '#036A43' }}>{pendingStatus}</span>
+          <span style={{ color: '#888', marginLeft: 6 }}>({STATUS_LABELS[pendingStatus] || pendingStatus})</span>
+          <div style={{ fontSize: 11, color: '#888', marginTop: 6 }}>
+            This will update the status in both Lead Perfection and the production board.
+          </div>
+        </div>
+        {error && (
+          <div style={{ fontSize: 12, color: '#A32D2D', background: '#fff5f5', border: '1px solid #f5c2c2', borderRadius: 6, padding: '8px 12px' }}>
+            ⚠ {error}
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onCancel} disabled={saving}
+            style={{ fontSize: 12, padding: '7px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={saving}
+            style={{ fontSize: 12, padding: '7px 16px', borderRadius: 6, border: 'none', background: saving ? '#aaa' : '#036A43', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500 }}>
+            {saving ? 'Updating…' : 'Confirm Change'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 export default function JobDetail() {
   const { id } = useParams()
   const [job, setJob] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [statusUpdating, setStatusUpdating] = useState(false)
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null)
+  const [statusError, setStatusError] = useState('')
   const [modal, setModal] = useState<'measure' | 'install' | null>(null)
   const [uploading, setUploading] = useState<string | false>(false)
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false)
@@ -109,19 +161,30 @@ export default function JobDetail() {
       .finally(() => setLoading(false))
   }, [id])
 
-  const handleStatusChange = async (newStatus: string) => {
+  // Called when user picks a new status from the dropdown — opens confirm modal
+  const handleStatusSelect = (newStatus: string) => {
     if (!job || newStatus === job.lp_status) return
+    setStatusError('')
+    setPendingStatus(newStatus)
+  }
+
+  // Called when user clicks Confirm inside the modal — fires LP + Supabase
+  const handleStatusConfirm = async () => {
+    if (!job || !pendingStatus) return
     setStatusUpdating(true)
+    setStatusError('')
     try {
       const res = await fetch(`${API_URL}/api/jobs/${job.lp_job_id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: pendingStatus }),
       })
-      if (res.ok) {
-        const updated = await res.json()
-        setJob((prev: any) => ({ ...prev, lp_status: updated.lp_status }))
-      }
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Update failed')
+      setJob((prev: any) => ({ ...prev, lp_status: json.lp_status }))
+      setPendingStatus(null)
+    } catch (err: any) {
+      setStatusError(err.message)
     } finally {
       setStatusUpdating(false)
     }
@@ -138,7 +201,6 @@ export default function JobDetail() {
       const result = await res.json()
       if (!res.ok) throw new Error(result.error || 'Upload failed')
       setUploadResult(result)
-      // Refresh job to show updated totals + work order rows
       const jobs = await fetch(`${API_URL}/api/jobs`).then(r => r.json())
       const updated = jobs.find((j: any) => j.lp_job_id === job.lp_job_id)
       if (updated) setJob(updated)
@@ -181,16 +243,28 @@ export default function JobDetail() {
       {modal === 'measure' && <ScheduleForm type="measure" job={job} onClose={() => setModal(null)} />}
       {modal === 'install' && <ScheduleForm type="install" job={job} onClose={() => setModal(null)} />}
 
+      {/* Status confirmation modal */}
+      {pendingStatus && (
+        <StatusConfirmModal
+          job={job}
+          pendingStatus={pendingStatus}
+          onConfirm={handleStatusConfirm}
+          onCancel={() => { setPendingStatus(null); setStatusError('') }}
+          saving={statusUpdating}
+          error={statusError}
+        />
+      )}
+
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
 
-        {/* Top bar — unchanged */}
+        {/* Top bar */}
         <div style={{ background: '#fff', borderBottom: '1px solid #e0e0de', padding: '11px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap' }}>
           <button onClick={() => window.history.back()} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>Back</button>
           <div style={{ fontSize: 15, fontWeight: 500, color: '#1a1a1a' }}>{job.customer_first} {job.customer_last}</div>
           <span style={{ fontSize: 11, color: '#aaa' }}>{d.contractid}</span>
           <select
             value={job.lp_status}
-            onChange={e => handleStatusChange(e.target.value)}
+            onChange={e => handleStatusSelect(e.target.value)}
             disabled={statusUpdating}
             style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid #b6dfc9', background: '#f0faf5', color: '#036A43', fontWeight: 500, cursor: 'pointer', outline: 'none' }}
           >
@@ -240,7 +314,6 @@ export default function JobDetail() {
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignContent: 'start' }}>
 
-          {/* Upload result banner */}
           {(uploadResult || uploadError) && (
             <div style={{ gridColumn: '1 / -1', borderRadius: 8, padding: '10px 14px', fontSize: 13, border: `1px solid ${uploadError ? '#f5c2c2' : '#b6dfc9'}`, background: uploadError ? '#fff5f5' : '#f0faf5', color: uploadError ? '#A32D2D' : '#036A43' }}>
               {uploadError ? `✗ ${uploadError}` : (
@@ -259,7 +332,6 @@ export default function JobDetail() {
             </div>
           )}
 
-          {/* Project Totals — only shown after upload */}
           {hasTotals && (
             <div style={{ gridColumn: '1 / -1', background: '#fff', borderRadius: 8, border: '1px solid #b6dfc9', padding: '14px 16px' }}>
               <div style={{ fontSize: 11, fontWeight: 500, color: '#888', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Project Totals</div>
@@ -281,7 +353,6 @@ export default function JobDetail() {
             </div>
           )}
 
-          {/* Original cards — unchanged */}
           <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e0e0de', padding: '14px 16px' }}>
             <div style={{ fontSize: 11, fontWeight: 500, color: '#888', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Customer</div>
             <div style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a', marginBottom: 4 }}>{job.customer_first} {job.customer_last}</div>
@@ -356,7 +427,6 @@ export default function JobDetail() {
             </div>
           </div>
 
-          {/* Work Order Rows 16–25 — only shown after upload */}
           {hasWorkOrder && (
             <div style={{ gridColumn: '1 / -1', background: '#fff', borderRadius: 8, border: '1px solid #e0e0de', padding: '14px 16px' }}>
               <div style={{ fontSize: 11, fontWeight: 500, color: '#888', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Work Order (Rows 16–25)</div>
