@@ -94,7 +94,7 @@ export default function JobDetail() {
   const [loading, setLoading] = useState(true)
   const [statusUpdating, setStatusUpdating] = useState(false)
   const [modal, setModal] = useState<'measure' | 'install' | null>(null)
-  const [uploading, setUploading] = useState(false)
+  const [uploading, setUploading] = useState<string | false>(false)
   const [uploadResult, setUploadResult] = useState<any>(null)
   const [uploadError, setUploadError] = useState('')
 
@@ -126,13 +126,14 @@ export default function JobDetail() {
     }
   }
 
-  const handleUploadDocs = async () => {
+  const handleUploadDocs = async (tabName?: string) => {
     if (!job) return
-    setUploading(true)
+    setUploading(tabName || 'all')
     setUploadError('')
     setUploadResult(null)
     try {
-      const res = await fetch(`${API_URL}/api/jobs/${job.lp_job_id}/upload-docs`, { method: 'POST' })
+      const url = tabName ? `${API_URL}/api/jobs/${job.lp_job_id}/upload-docs/${encodeURIComponent(tabName)}` : `${API_URL}/api/jobs/${job.lp_job_id}/upload-docs`
+      const res = await fetch(url, { method: 'POST' })
       const result = await res.json()
       if (!res.ok) throw new Error(result.error || 'Upload failed')
       setUploadResult(result)
@@ -207,11 +208,19 @@ export default function JobDetail() {
             <button onClick={() => setModal('measure')} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: 'pointer', fontWeight: 500 }}>📐 Schedule Measure</button>
             <button onClick={() => setModal('install')} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: 'pointer', fontWeight: 500 }}>🔨 Schedule Install</button>
             <button
-              onClick={handleUploadDocs}
-              disabled={uploading || !job.measure_sheet_url}
-              style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: 'none', background: uploading ? '#aaa' : '#036A43', color: '#fff', cursor: uploading || !job.measure_sheet_url ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: !job.measure_sheet_url ? 0.5 : 1 }}>
-              {uploading ? '⏳ Uploading...' : '⬆ Upload Docs to LP'}
+              onClick={() => handleUploadDocs()}
+              disabled={!!uploading || !job.measure_sheet_url}
+              style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: 'none', background: uploading === 'all' ? '#aaa' : '#036A43', color: '#fff', cursor: !!uploading || !job.measure_sheet_url ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: !job.measure_sheet_url ? 0.5 : 1 }}>
+              {uploading === 'all' ? '⏳ Uploading...' : '⬆ Upload All'}
             </button>
+            {['Costing','Window Measure','Work Order','Checklist','LaborCalc'].map(tab => (
+              <button key={tab}
+                onClick={() => handleUploadDocs(tab)}
+                disabled={!!uploading || !job.measure_sheet_url}
+                style={{ fontSize: 11, padding: '5px 10px', borderRadius: 6, border: '1px solid #b6dfc9', background: uploading === tab ? '#aaa' : '#f0faf5', color: uploading === tab ? '#fff' : '#036A43', cursor: !!uploading || !job.measure_sheet_url ? 'not-allowed' : 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                {uploading === tab ? '⏳' : '⬆'} {tab === 'LaborCalc' ? 'Labor Calc' : tab}
+              </button>
+            ))}
             <a href={lpUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #036A43', color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>Open in LP</a>
           </div>
         </div>
