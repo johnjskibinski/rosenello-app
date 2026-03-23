@@ -95,6 +95,7 @@ export default function JobDetail() {
   const [statusUpdating, setStatusUpdating] = useState(false)
   const [modal, setModal] = useState<'measure' | 'install' | null>(null)
   const [uploading, setUploading] = useState<string | false>(false)
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false)
   const [uploadResult, setUploadResult] = useState<any>(null)
   const [uploadError, setUploadError] = useState('')
 
@@ -207,20 +208,32 @@ export default function JobDetail() {
             )}
             <button onClick={() => setModal('measure')} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: 'pointer', fontWeight: 500 }}>📐 Schedule Measure</button>
             <button onClick={() => setModal('install')} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: 'pointer', fontWeight: 500 }}>🔨 Schedule Install</button>
-            <button
-              onClick={() => handleUploadDocs()}
-              disabled={!!uploading || !job.measure_sheet_url}
-              style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: 'none', background: uploading === 'all' ? '#aaa' : '#036A43', color: '#fff', cursor: !!uploading || !job.measure_sheet_url ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: !job.measure_sheet_url ? 0.5 : 1 }}>
-              {uploading === 'all' ? '⏳ Uploading...' : '⬆ Upload All'}
-            </button>
-            {['Costing','Window Measure','Work Order','Checklist','LaborCalc'].map(tab => (
-              <button key={tab}
-                onClick={() => handleUploadDocs(tab)}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setUploadMenuOpen(o => !o)}
                 disabled={!!uploading || !job.measure_sheet_url}
-                style={{ fontSize: 11, padding: '5px 10px', borderRadius: 6, border: '1px solid #b6dfc9', background: uploading === tab ? '#aaa' : '#f0faf5', color: uploading === tab ? '#fff' : '#036A43', cursor: !!uploading || !job.measure_sheet_url ? 'not-allowed' : 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                {uploading === tab ? '⏳' : '⬆'} {tab === 'LaborCalc' ? 'Labor Calc' : tab}
+                style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: 'none', background: uploading ? '#aaa' : '#036A43', color: '#fff', cursor: !!uploading || !job.measure_sheet_url ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: !job.measure_sheet_url ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {uploading ? '⏳ Uploading...' : '⬆ Upload Docs'} <span style={{ fontSize: 10 }}>▼</span>
               </button>
-            ))}
+              {uploadMenuOpen && !uploading && (
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff', border: '1px solid #e0e0de', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 50, minWidth: 180, overflow: 'hidden' }}>
+                  {[
+                    { label: '⬆ Upload All', tab: undefined },
+                    { label: 'Costing', tab: 'Costing' },
+                    { label: 'Window Measure', tab: 'Window Measure' },
+                    { label: 'Work Order', tab: 'Work Order' },
+                    { label: 'Checklist', tab: 'Checklist' },
+                    { label: 'Labor Calc', tab: 'LaborCalc' },
+                  ].map((item, i) => (
+                    <button key={i}
+                      onClick={() => { setUploadMenuOpen(false); handleUploadDocs(item.tab) }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', fontSize: 13, border: 'none', borderBottom: i === 0 ? '1px solid #e0e0de' : 'none', background: i === 0 ? '#f5f5f3' : '#fff', color: '#1a1a1a', cursor: 'pointer', fontWeight: i === 0 ? 600 : 400 }}>
+                      {i > 0 && <span style={{ color: '#036A43', marginRight: 6 }}>⬆</span>}{item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <a href={lpUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #036A43', color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>Open in LP</a>
           </div>
         </div>
