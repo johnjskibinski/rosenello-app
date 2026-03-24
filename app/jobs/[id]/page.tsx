@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import { STATUS_LABELS, STATUS_ORDER } from '@/lib/statuses'
+import NotesSection from './notes-section'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
 
@@ -447,6 +448,8 @@ export default function JobDetail() {
               </div>
             </div>
           )}
+
+          <NotesSection lpJobId={job.lp_job_id} />
 
         </div>
       </div>
