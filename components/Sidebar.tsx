@@ -8,6 +8,7 @@ const navItems = [
   { label: 'Calendar', href: '/calendar' },
   { label: 'KPI Dashboard', href: '/kpi' },
   { label: 'Installers', href: '/installers' },
+  { label: 'Admin', href: '/admin' },
 ]
 
 export default function Sidebar() {
