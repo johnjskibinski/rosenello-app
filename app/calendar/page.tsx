@@ -90,6 +90,8 @@ export default function CalendarPage() {
   const [popup, setPopup] = useState<PopupState>({ open: false, event: null, x: 0, y: 0 })
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [editMode, setEditMode] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
 
   const [formType, setFormType] = useState('measure')
   const [formCrew, setFormCrew] = useState('')
@@ -170,6 +172,12 @@ export default function CalendarPage() {
     const ev = events.find(e => e.id === info.event.id)
     if (!ev) return
     const rect = info.el.getBoundingClientRect()
+    setFormType(ev.event_type)
+    setFormCrew(ev.crew || '')
+    setFormNotes(ev.notes || '')
+    setFormStart(ev.start_time)
+    setFormEnd(ev.end_time)
+    setEditMode(false)
     setPopup({ open: true, event: ev, x: rect.right + 8, y: rect.top })
   }
 
@@ -249,6 +257,68 @@ export default function CalendarPage() {
       console.error(err)
     } finally {
       setDeleting(false)
+    }
+  }
+
+  const handleDuplicate = async () => {
+    if (!popup.event) return
+    setDuplicating(true)
+    try {
+      const ev = popup.event
+      const newStart = new Date(new Date(ev.start_time).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      const newEnd = new Date(new Date(ev.end_time).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      const res = await fetch(`${API}/api/calendar/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lp_job_id: ev.lp_job_id,
+          event_type: ev.event_type,
+          crew: ev.crew,
+          title: ev.title,
+          description: ev.description,
+          location: ev.location,
+          start_time: newStart,
+          end_time: newEnd,
+          color_id: ev.color_id,
+          notes: ev.notes,
+        }),
+      })
+      if (!res.ok) throw new Error('Duplicate failed')
+      const newEvent = await res.json()
+      setEvents(prev => [...prev, newEvent])
+      setPopup({ open: false, event: null, x: 0, y: 0 })
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setDuplicating(false)
+    }
+  }
+
+  const handleEditSave = async () => {
+    if (!popup.event) return
+    setSaving(true)
+    try {
+      const res = await fetch(`${API}/api/calendar/events/${popup.event.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_type: formType,
+          crew: formCrew || null,
+          start_time: formStart,
+          end_time: formEnd,
+          notes: formNotes || null,
+          color_id: formType === 'measure' ? '5' : formType === 'install' ? '6' : formType === 'service' ? '7' : '8',
+        }),
+      })
+      if (!res.ok) throw new Error('Edit failed')
+      const updated = await res.json()
+      setEvents(prev => prev.map(e => e.id === updated.id ? { ...e, ...updated } : e))
+      setPopup({ open: false, event: null, x: 0, y: 0 })
+      setEditMode(false)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -434,7 +504,7 @@ export default function CalendarPage() {
           <div style={{ padding: '12px 14px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 14, height: 14, borderRadius: '50%', background: COLOR_MAP[popup.event.event_type], flexShrink: 0 }} />
             <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{popup.event.title}</div>
-            <button onClick={() => setPopup({ open: false, event: null, x: 0, y: 0 })}
+            <button onClick={() => { setPopup({ open: false, event: null, x: 0, y: 0 }); setEditMode(false) }}
               style={{ border: 'none', background: 'none', fontSize: 18, color: '#aaa', cursor: 'pointer', lineHeight: 1 }}>×</button>
           </div>
           <div style={{ padding: '12px 14px', fontSize: 12, color: '#444', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -472,12 +542,75 @@ export default function CalendarPage() {
                 🔗 Open in LP
               </a>
             )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4, paddingTop: 8, borderTop: '1px solid #eee' }}>
-              <button onClick={handleDeleteEvent} disabled={deleting}
-                style={{ fontSize: 12, padding: '6px 12px', borderRadius: 6, border: '1px solid #f5c2c2', background: '#fff5f5', color: '#A32D2D', cursor: deleting ? 'not-allowed' : 'pointer' }}>
-                {deleting ? 'Deleting…' : 'Delete'}
-              </button>
-            </div>
+            {editMode ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 8, borderTop: '1px solid #eee' }}>
+                <div>
+                  <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>Event Type</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {Object.entries(EVENT_TYPE_LABELS).map(([val, label]) => (
+                      <button key={val} onClick={() => setFormType(val)}
+                        style={{ flex: 1, padding: '5px 0', borderRadius: 6, border: '2px solid', borderColor: formType === val ? COLOR_MAP[val] : '#ddd', background: formType === val ? COLOR_MAP[val] : '#fff', color: formType === val ? (val === 'measure' ? '#1a1a1a' : '#fff') : '#555', fontWeight: 600, fontSize: 11, cursor: 'pointer' }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>Start</label>
+                    <input type="datetime-local" value={formStart.slice(0, 16)} onChange={e => setFormStart(e.target.value)}
+                      style={{ width: '100%', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid #ccc', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>End</label>
+                    <input type="datetime-local" value={formEnd.slice(0, 16)} onChange={e => setFormEnd(e.target.value)}
+                      style={{ width: '100%', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid #ccc', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+                {(formType === 'install' || formType === 'service') && (
+                  <div>
+                    <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>Crew</label>
+                    <select value={formCrew} onChange={e => setFormCrew(e.target.value)}
+                      style={{ width: '100%', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid #ccc', outline: 'none', background: '#fff' }}>
+                      <option value="">Select crew...</option>
+                      {CREWS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>Notes</label>
+                  <textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={2}
+                    style={{ width: '100%', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid #ccc', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                  <button onClick={() => setEditMode(false)}
+                    style={{ fontSize: 12, padding: '6px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                  <button onClick={handleEditSave} disabled={saving}
+                    style={{ fontSize: 12, padding: '6px 14px', borderRadius: 6, border: 'none', background: saving ? '#aaa' : '#036A43', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500 }}>
+                    {saving ? 'Saving…' : 'Save Changes'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 4, paddingTop: 8, borderTop: '1px solid #eee' }}>
+                <button onClick={handleDeleteEvent} disabled={deleting}
+                  style={{ fontSize: 12, padding: '6px 12px', borderRadius: 6, border: '1px solid #f5c2c2', background: '#fff5f5', color: '#A32D2D', cursor: deleting ? 'not-allowed' : 'pointer' }}>
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={handleDuplicate} disabled={duplicating}
+                    style={{ fontSize: 12, padding: '6px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: duplicating ? 'not-allowed' : 'pointer' }}>
+                    {duplicating ? 'Copying…' : 'Duplicate +1 wk'}
+                  </button>
+                  <button onClick={() => setEditMode(true)}
+                    style={{ fontSize: 12, padding: '6px 14px', borderRadius: 6, border: 'none', background: '#036A43', color: '#fff', cursor: 'pointer', fontWeight: 500 }}>
+                    Edit
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
