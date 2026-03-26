@@ -92,6 +92,7 @@ export default function CalendarPage() {
   const draggableRef = useRef<any>(null)
   const sidebarListRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
+  const pendingDrop = useRef<any>(null)
   const dragStartPos = useRef({ mouseX: 0, mouseY: 0, popupX: 0, popupY: 0 })
 
   const [events, setEvents] = useState<CalEvent[]>([])
@@ -203,6 +204,7 @@ export default function CalendarPage() {
     const job = jobs.find(j => String(j.lp_job_id) === jobId) || null
     const start = info.date.toISOString()
     const end = new Date(info.date.getTime() + 2 * 60 * 60 * 1000).toISOString()
+    pendingDrop.current = info
     openModal(start, end, job)
   }
 
@@ -279,6 +281,7 @@ export default function CalendarPage() {
       if (!res.ok) throw new Error('Save failed')
       const newEvent = await res.json()
       setEvents(prev => [...prev, newEvent])
+      pendingDrop.current = null
       setModal({ open: false, startTime: '', endTime: '', job: null })
     } catch (err) {
       console.error(err)
@@ -531,7 +534,10 @@ export default function CalendarPage() {
                   style={{ ...inputStyle(), resize: 'vertical', fontFamily: 'inherit' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button onClick={() => setModal({ open: false, startTime: '', endTime: '', job: null })}
+                <button onClick={() => {
+                  if (pendingDrop.current) { pendingDrop.current.revert(); pendingDrop.current = null; }
+                  setModal({ open: false, startTime: '', endTime: '', job: null })
+                }}
                   style={{ fontSize: 12, padding: '7px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>Cancel</button>
                 <button onClick={handleSaveEvent} disabled={saving || !formStart || !formEnd}
                   style={{ fontSize: 12, padding: '7px 16px', borderRadius: 6, border: 'none', background: saving ? '#aaa' : '#036A43', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500 }}>
