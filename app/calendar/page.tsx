@@ -534,10 +534,7 @@ export default function CalendarPage() {
                   style={{ ...inputStyle(), resize: 'vertical', fontFamily: 'inherit' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button onClick={() => {
-                  if (pendingDrop.current) { pendingDrop.current.revert(); pendingDrop.current = null; }
-                  setModal({ open: false, startTime: '', endTime: '', job: null })
-                }}
+                <button onClick={() => { pendingDrop.current = null; setModal({ open: false, startTime: '', endTime: '', job: null }) }}
                   style={{ fontSize: 12, padding: '7px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>Cancel</button>
                 <button onClick={handleSaveEvent} disabled={saving || !formStart || !formEnd}
                   style={{ fontSize: 12, padding: '7px 16px', borderRadius: 6, border: 'none', background: saving ? '#aaa' : '#036A43', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500 }}>
