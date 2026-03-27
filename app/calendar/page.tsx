@@ -533,8 +533,9 @@ export default function CalendarPage() {
             eventDrop={handleEventDrop}
             eventResize={handleEventResize}
             drop={handleExternalDrop}
-            slotMinTime="06:00:00"
-            slotMaxTime="22:00:00"
+            slotMinTime="00:00:00"
+            slotMaxTime="24:00:00"
+            scrollTime="00:00:00"
             allDaySlot={true}
             nowIndicator={true}
             datesSet={(info) => fetchEvents(info.startStr, info.endStr)}
