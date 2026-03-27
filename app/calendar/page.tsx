@@ -59,10 +59,20 @@ interface Job {
   state: string
   zip: string
   lp_status: string
+  lp_status_label: string | null
   product: string
   gross_amount: number
+  balance_due: number | null
+  installer_1: string | null
+  installer_2: string | null
+  contract_date: string | null
+  total_windows: number | null
+  total_doors: number | null
+  total_units: number | null
   measure_sheet_url: string | null
   companycam_url: string | null
+  work_order_rows: any[] | null
+  raw_lp_data: any
 }
 
 interface ModalState {
@@ -87,6 +97,12 @@ interface DupModalState {
   endTime: string
 }
 
+interface TooltipState {
+  job: Job | null
+  x: number
+  y: number
+}
+
 export default function CalendarPage() {
   const calendarRef = useRef<any>(null)
   const draggableRef = useRef<any>(null)
@@ -94,9 +110,14 @@ export default function CalendarPage() {
   const isDragging = useRef(false)
   const pendingDrop = useRef<any>(null)
   const dragStartPos = useRef({ mouseX: 0, mouseY: 0, popupX: 0, popupY: 0 })
+  const searchTimer = useRef<any>(null)
 
   const [events, setEvents] = useState<CalEvent[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<Job[]>([])
+  const [searching, setSearching] = useState(false)
+  const [tooltip, setTooltip] = useState<TooltipState>({ job: null, x: 0, y: 0 })
   const [modal, setModal] = useState<ModalState>({ open: false, startTime: '', endTime: '', job: null })
   const [popup, setPopup] = useState<PopupState>({ open: false, event: null, x: 0, y: 0 })
   const [dupModal, setDupModal] = useState<DupModalState>({ open: false, event: null, date: '', startTime: '', endTime: '' })
@@ -142,13 +163,37 @@ export default function CalendarPage() {
     fetchEvents(start, end)
   }, [fetchEvents, fetchJobs])
 
+  // Debounced search
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const q = e.target.value
+    setSearchQuery(q)
+    clearTimeout(searchTimer.current)
+    if (!q.trim()) {
+      setSearchResults([])
+      setSearching(false)
+      return
+    }
+    setSearching(true)
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API}/api/jobs/search?q=${encodeURIComponent(q.trim())}`)
+        const data = await res.json()
+        setSearchResults(Array.isArray(data) ? data : [])
+      } catch {
+        setSearchResults([])
+      } finally {
+        setSearching(false)
+      }
+    }, 350)
+  }
+
   useEffect(() => {
     if (!sidebarListRef.current) return
     const draggable = new Draggable(sidebarListRef.current, {
       itemSelector: '.job-card',
       eventData: (el) => {
         const jobId = el.getAttribute('data-job-id')
-        const job = jobs.find(j => String(j.lp_job_id) === jobId)
+        const job = [...jobs, ...searchResults].find(j => String(j.lp_job_id) === jobId)
         return {
           title: job ? `${job.customer_last}, ${job.customer_first}` : 'New Event',
           duration: '02:00',
@@ -158,7 +203,7 @@ export default function CalendarPage() {
     })
     draggableRef.current = draggable
     return () => draggable.destroy()
-  }, [jobs])
+  }, [jobs, searchResults])
 
   // Popup drag support
   const handlePopupMouseDown = (e: React.MouseEvent) => {
@@ -201,7 +246,7 @@ export default function CalendarPage() {
 
   const handleExternalDrop = (info: any) => {
     const jobId = info.draggedEl.getAttribute('data-job-id')
-    const job = jobs.find(j => String(j.lp_job_id) === jobId) || null
+    const job = [...jobs, ...searchResults].find(j => String(j.lp_job_id) === jobId) || null
     const start = info.date.toISOString()
     const end = new Date(info.date.getTime() + 2 * 60 * 60 * 1000).toISOString()
     pendingDrop.current = info
@@ -384,7 +429,6 @@ export default function CalendarPage() {
     }
   }
 
-  // Strip URL/link lines from description — shown as dedicated links below
   const cleanDescription = (desc: string | null) => {
     if (!desc) return ''
     return desc
@@ -392,6 +436,15 @@ export default function CalendarPage() {
       .filter(line => !line.includes('http') && !line.includes('Measure Packet') && !line.includes('CompanyCam'))
       .join('\n')
       .trim()
+  }
+
+  const formatPhone = (raw: any): string => {
+    const p = raw?.phone1 || raw?.phone || ''
+    if (!p) return ''
+    const digits = String(p).replace(/\D/g, '')
+    if (digits.length === 10) return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`
+    if (digits.length === 11 && digits[0] === '1') return `(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`
+    return String(p)
   }
 
   const fcEvents = events.map(e => ({
@@ -414,6 +467,49 @@ export default function CalendarPage() {
     border: '1px solid #ccc', outline: 'none', boxSizing: 'border-box',
   })
   const labelStyle: React.CSSProperties = { fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }
+
+  const isSearchActive = searchQuery.trim().length > 0
+  const displayList = isSearchActive ? searchResults : null
+
+  // Job card component (compact single-line)
+  const JobCard = ({ job }: { job: Job }) => {
+    const phone = formatPhone(job.raw_lp_data)
+    return (
+      <div
+        key={job.lp_job_id}
+        className="job-card"
+        data-job-id={String(job.lp_job_id)}
+        onMouseEnter={(e) => {
+          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+          setTooltip({ job, x: rect.left - 8, y: rect.top })
+        }}
+        onMouseLeave={() => setTooltip({ job: null, x: 0, y: 0 })}
+        style={{
+          background: '#fff',
+          border: '1px solid #e0e0de',
+          borderRadius: 6,
+          padding: '5px 8px',
+          cursor: 'grab',
+          marginBottom: 3,
+          fontSize: 12,
+          userSelect: 'none',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 6,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+        }}
+      >
+        <span style={{ fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>
+          {job.customer_last}, {job.customer_first}
+        </span>
+        <span style={{ color: '#888', fontSize: 11, flexShrink: 0 }}>
+          {job.city}, {job.state}
+        </span>
+      </div>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -446,37 +542,142 @@ export default function CalendarPage() {
         </div>
 
         {/* Unscheduled Jobs Sidebar */}
-        <div style={{ width: 280, borderLeft: '1px solid #e0e0de', overflowY: 'auto', background: '#f9f9f8', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid #e0e0de', fontSize: 13, fontWeight: 700, color: '#1a1a1a' }}>
-            Unscheduled Jobs
+        <div style={{ width: 260, borderLeft: '1px solid #e0e0de', overflowY: 'auto', background: '#f9f9f8', display: 'flex', flexDirection: 'column' }}>
+          {/* Header */}
+          <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid #e0e0de', flexShrink: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a1a', marginBottom: 8 }}>Jobs</div>
+            {/* Search input */}
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                placeholder="Search all jobs…"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                style={{
+                  width: '100%', fontSize: 12, padding: '6px 28px 6px 8px',
+                  borderRadius: 6, border: '1px solid #ccc', outline: 'none',
+                  boxSizing: 'border-box', background: '#fff',
+                }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => { setSearchQuery(''); setSearchResults([]) }}
+                  style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', color: '#aaa', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}
+                >×</button>
+              )}
+            </div>
           </div>
-          <div ref={sidebarListRef} style={{ flex: 1, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {SIDEBAR_STATUSES.map(status => {
-              const group = groupedJobs[status] || []
-              if (!group.length) return null
-              return (
-                <div key={status}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '6px 2px 4px' }}>
-                    {SIDEBAR_STATUS_LABELS[status]} ({group.length})
+
+          {/* List */}
+          <div ref={sidebarListRef} style={{ flex: 1, padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
+            {isSearchActive ? (
+              searching ? (
+                <div style={{ fontSize: 11, color: '#aaa', padding: '12px 4px' }}>Searching…</div>
+              ) : searchResults.length === 0 ? (
+                <div style={{ fontSize: 11, color: '#aaa', padding: '12px 4px' }}>No results found</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 2px 6px' }}>
+                    {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
                   </div>
-                  {group.map(job => (
-                    <div key={job.lp_job_id} className="job-card" data-job-id={String(job.lp_job_id)}
-                      style={{ background: '#fff', border: '1px solid #e0e0de', borderRadius: 8, padding: '8px 10px', cursor: 'grab', marginBottom: 4, fontSize: 12, userSelect: 'none' }}>
-                      <div style={{ fontWeight: 600, color: '#1a1a1a' }}>{job.customer_last}, {job.customer_first}</div>
-                      <div style={{ color: '#666', marginTop: 2 }}>{job.address}</div>
-                      <div style={{ color: '#888', marginTop: 2 }}>{job.city}, {job.state}</div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                        <span style={{ fontSize: 11, background: '#f0faf5', color: '#036A43', borderRadius: 4, padding: '1px 6px', fontWeight: 500 }}>{job.product || 'Win'}</span>
-                        <span style={{ fontSize: 11, color: '#036A43', fontWeight: 600 }}>${Number(job.gross_amount || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                  {searchResults.map(job => <JobCard key={job.lp_job_id} job={job} />)}
+                </>
               )
-            })}
+            ) : (
+              SIDEBAR_STATUSES.map(status => {
+                const group = groupedJobs[status] || []
+                if (!group.length) return null
+                return (
+                  <div key={status}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '6px 2px 4px' }}>
+                      {SIDEBAR_STATUS_LABELS[status]} ({group.length})
+                    </div>
+                    {group.map(job => <JobCard key={job.lp_job_id} job={job} />)}
+                  </div>
+                )
+              })
+            )}
           </div>
         </div>
       </div>
+
+      {/* ─── Hover Tooltip ─── */}
+      {tooltip.job && (
+        <div style={{
+          position: 'fixed',
+          left: Math.max(8, tooltip.x - 220),
+          top: Math.min(tooltip.y, window.innerHeight - 260),
+          width: 220,
+          background: '#fff',
+          border: '1px solid #e0e0de',
+          borderRadius: 8,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+          padding: '10px 12px',
+          zIndex: 500,
+          fontSize: 12,
+          pointerEvents: 'none',
+        }}>
+          <div style={{ fontWeight: 700, color: '#1a1a1a', marginBottom: 6, fontSize: 13 }}>
+            {tooltip.job.customer_last}, {tooltip.job.customer_first}
+          </div>
+          <div style={{ color: '#444', marginBottom: 2 }}>{tooltip.job.address}</div>
+          <div style={{ color: '#666', marginBottom: 6 }}>{tooltip.job.city}, {tooltip.job.state} {tooltip.job.zip}</div>
+          {formatPhone(tooltip.job.raw_lp_data) && (
+            <div style={{ color: '#036A43', marginBottom: 6, fontWeight: 500 }}>
+              📞 {formatPhone(tooltip.job.raw_lp_data)}
+            </div>
+          )}
+          <div style={{ borderTop: '1px solid #eee', paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {(tooltip.job.total_windows || tooltip.job.total_doors || tooltip.job.total_units) && (
+              <div style={{ color: '#555' }}>
+                {[
+                  tooltip.job.total_windows ? `${tooltip.job.total_windows} win` : null,
+                  tooltip.job.total_doors ? `${tooltip.job.total_doors} door${tooltip.job.total_doors !== 1 ? 's' : ''}` : null,
+                  tooltip.job.total_units ? `${tooltip.job.total_units} units total` : null,
+                ].filter(Boolean).join(' · ')}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#555' }}>Gross</span>
+              <span style={{ fontWeight: 600, color: '#1a1a1a' }}>${Number(tooltip.job.gross_amount || 0).toLocaleString()}</span>
+            </div>
+            {tooltip.job.balance_due != null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#555' }}>Balance</span>
+                <span style={{ fontWeight: 600, color: tooltip.job.balance_due > 0 ? '#A32D2D' : '#036A43' }}>
+                  ${Number(tooltip.job.balance_due).toLocaleString()}
+                </span>
+              </div>
+            )}
+            {(tooltip.job.installer_1 || tooltip.job.installer_2) && (
+              <div style={{ color: '#555' }}>
+                👷 {[tooltip.job.installer_1, tooltip.job.installer_2].filter(Boolean).join(', ')}
+              </div>
+            )}
+            {tooltip.job.contract_date && (
+              <div style={{ color: '#888', fontSize: 11 }}>
+                Signed {new Date(tooltip.job.contract_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </div>
+            )}
+            {tooltip.job.work_order_rows && tooltip.job.work_order_rows.length > 0 && (
+              <div style={{ borderTop: '1px solid #eee', paddingTop: 6, marginTop: 2 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Work Order</div>
+                {tooltip.job.work_order_rows.map((row: any, i: number) => (
+                  <div key={i} style={{ fontSize: 11, color: '#444', display: 'flex', justifyContent: 'space-between', gap: 6, lineHeight: 1.6 }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.description || row.item || row[0] || JSON.stringify(row)}</span>
+                    {(row.qty || row.quantity || row[1]) && <span style={{ color: '#888', flexShrink: 0 }}>×{row.qty || row.quantity || row[1]}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ borderTop: '1px solid #eee', paddingTop: 6, marginTop: 4, display: 'flex', gap: 8 }}>
+            {tooltip.job.measure_sheet_url && <span style={{ color: '#036A43', fontSize: 11 }}>📋 Packet</span>}
+            {tooltip.job.companycam_url && <span style={{ color: '#036A43', fontSize: 11 }}>📸 CCam</span>}
+            <span style={{ color: '#888', fontSize: 11, marginLeft: 'auto' }}>{tooltip.job.lp_status_label || tooltip.job.lp_status}</span>
+          </div>
+        </div>
+      )}
 
       {/* ─── Create Event Modal ─── */}
       {modal.open && (
@@ -595,7 +796,6 @@ export default function CalendarPage() {
           boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid #e0e0de',
           maxHeight: 'calc(100vh - 40px)', display: 'flex', flexDirection: 'column',
         }}>
-          {/* Drag handle header */}
           <div onMouseDown={handlePopupMouseDown}
             style={{ padding: '12px 14px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', gap: 10, cursor: 'grab', flexShrink: 0, userSelect: 'none' }}>
             <div style={{ width: 14, height: 14, borderRadius: '50%', background: COLOR_MAP[popup.event.event_type], flexShrink: 0 }} />
@@ -604,7 +804,6 @@ export default function CalendarPage() {
               style={{ border: 'none', background: 'none', fontSize: 18, color: '#aaa', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button>
           </div>
 
-          {/* Scrollable body */}
           <div style={{ padding: '12px 14px', fontSize: 12, color: '#444', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
             <div style={{ color: '#666' }}>
               {new Date(popup.event.start_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
