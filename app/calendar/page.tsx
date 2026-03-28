@@ -236,7 +236,7 @@ export default function CalendarPage() {
         const job = [...jobs, ...searchResults].find(j => String(j.lp_job_id) === jobId)
         return {
           title: job ? `${job.customer_last}, ${job.customer_first}` : 'New Event',
-          duration: '02:00',
+          duration: '01:00',
           extendedProps: { jobId },
         }
       },
@@ -296,7 +296,7 @@ export default function CalendarPage() {
     const jobId = info.draggedEl.getAttribute('data-job-id')
     const job = [...jobs, ...searchResults].find(j => String(j.lp_job_id) === jobId) || null
     const start = info.date.toISOString()
-    const end = new Date(info.date.getTime() + 2 * 60 * 60 * 1000).toISOString()
+    const end = new Date(info.date.getTime() + 1 * 60 * 60 * 1000).toISOString()
     pendingDrop.current = info
     openModal(start, end, job)
   }
@@ -568,7 +568,7 @@ export default function CalendarPage() {
 
           {/* Compact slot CSS */}
           <style>{`
-            .fc .fc-timegrid-slot { height: 24px !important; }
+            .fc .fc-timegrid-slot { height: 16px !important; }
             .fc .fc-timegrid-slot-label { font-size: 10px !important; }
             .fc .fc-event { font-size: 11px !important; }
             .fc .fc-col-header-cell { font-size: 11px !important; }
@@ -593,19 +593,24 @@ export default function CalendarPage() {
             droppable={true}
             events={[
               ...fcEvents,
-              // Availability notes as all-day events in the all-day row
-              ...Object.entries(availability).map(([date, notes]) => ({
-                id: `avail-${date}`,
-                title: notes,
-                start: date,
-                allDay: true,
-                backgroundColor: '#8B0000',
-                borderColor: '#8B0000',
-                textColor: '#fff',
-                editable: false,
-                classNames: ['fc-avail-event'],
-                extendedProps: { isAvailability: true, availDate: date, availNotes: notes },
-              }))
+              // Each line of availability notes becomes its own all-day event block
+              ...Object.entries(availability).flatMap(([date, notes]) =>
+                notes.split('\n')
+                  .map(line => line.trim())
+                  .filter(Boolean)
+                  .map((line, i) => ({
+                    id: `avail-${date}-${i}`,
+                    title: line,
+                    start: date,
+                    allDay: true,
+                    backgroundColor: '#8B0000',
+                    borderColor: '#6B0000',
+                    textColor: '#fff',
+                    editable: false,
+                    classNames: ['fc-avail-event'],
+                    extendedProps: { isAvailability: true, availDate: date, availNotes: notes },
+                  }))
+              )
             ]}
             select={handleDateSelect}
             eventClick={(info) => {
