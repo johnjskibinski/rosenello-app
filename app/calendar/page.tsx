@@ -282,7 +282,15 @@ export default function CalendarPage() {
     setModal({ open: true, startTime, endTime, job })
   }
 
-  const handleDateSelect = (info: any) => { openModal(info.startStr, info.endStr) }
+  const handleDateSelect = (info: any) => {
+    if (info.allDay) {
+      // Clicking the all-day row opens availability editor for that date
+      const date = info.startStr.slice(0, 10)
+      setAvailEdit({ date, value: availability[date] || '' })
+      return
+    }
+    openModal(info.startStr, info.endStr)
+  }
 
   const handleExternalDrop = (info: any) => {
     const jobId = info.draggedEl.getAttribute('data-job-id')
@@ -558,103 +566,21 @@ export default function CalendarPage() {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-          {/* ─── Crew Availability Bar ─── */}
-          {visibleDates.length > 0 && (
-            <div style={{
-              display: 'flex',
-              borderBottom: '1px solid #e0e0de',
-              background: '#fff',
-              flexShrink: 0,
-              minHeight: 32,
-            }}>
-              {/* Spacer to align with calendar time gutter (~55px) */}
-              <div style={{ width: 55, flexShrink: 0, borderRight: '1px solid #e8e8e8' }} />
-              {visibleDates.map(date => {
-                const notes = availability[date]
-                const isEditing = availEdit?.date === date
-                const dayLabel = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' })
-                return (
-                  <div key={date} style={{ flex: 1, borderRight: '1px solid #e8e8e8', position: 'relative', minWidth: 0 }}>
-                    {isEditing ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 4px', height: '100%' }}>
-                        <input
-                          autoFocus
-                          value={availEdit.value}
-                          onChange={e => setAvailEdit({ date, value: e.target.value })}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') saveAvailability(date, availEdit.value)
-                            if (e.key === 'Escape') setAvailEdit(null)
-                          }}
-                          placeholder="e.g. Ricardo off, Jay W only..."
-                          style={{
-                            flex: 1, fontSize: 11, padding: '2px 6px', borderRadius: 4,
-                            border: '1px solid #8B0000', outline: 'none', minWidth: 0,
-                          }}
-                        />
-                        <button
-                          onClick={() => saveAvailability(date, availEdit.value)}
-                          disabled={availSaving}
-                          style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, border: 'none', background: '#8B0000', color: '#fff', cursor: 'pointer', flexShrink: 0 }}
-                        >
-                          {availSaving ? '…' : '✓'}
-                        </button>
-                        <button
-                          onClick={() => setAvailEdit(null)}
-                          style={{ fontSize: 10, padding: '2px 5px', borderRadius: 4, border: '1px solid #ccc', background: '#fff', color: '#555', cursor: 'pointer', flexShrink: 0 }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : notes ? (
-                      <div
-                        onClick={() => setAvailEdit({ date, value: notes })}
-                        title={`Click to edit: ${notes}`}
-                        style={{
-                          background: '#8B0000',
-                          color: '#fff',
-                          fontSize: 10,
-                          fontWeight: 500,
-                          padding: '3px 6px',
-                          cursor: 'pointer',
-                          height: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          overflow: 'hidden',
-                          whiteSpace: 'nowrap',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {notes}
-                      </div>
-                    ) : (
-                      <div
-                        onClick={() => setAvailEdit({ date, value: '' })}
-                        title={`Add note for ${dayLabel}`}
-                        style={{
-                          height: '100%',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          opacity: 0,
-                          transition: 'opacity 0.15s',
-                          fontSize: 14,
-                          color: '#ccc',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                        onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
-                      >
-                        +
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          {/* Compact slot CSS */}
+          <style>{`
+            .fc .fc-timegrid-slot { height: 24px !important; }
+            .fc .fc-timegrid-slot-label { font-size: 10px !important; }
+            .fc .fc-event { font-size: 11px !important; }
+            .fc .fc-col-header-cell { font-size: 11px !important; }
+            .fc .fc-daygrid-event { font-size: 11px !important; }
+            .fc .fc-toolbar-title { font-size: 16px !important; }
+            .fc .fc-button { font-size: 11px !important; padding: 4px 8px !important; }
+            .fc-avail-event { cursor: pointer !important; }
+            .fc-avail-event .fc-event-main { padding: 2px 4px !important; }
+          `}</style>
 
-          {/* Calendar */}
-          <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+          {/* Calendar — availability notes render as all-day events in the all-day row */}
+          <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px' }}>
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -665,18 +591,54 @@ export default function CalendarPage() {
             selectable={true}
             selectMirror={true}
             droppable={true}
-            events={fcEvents}
+            events={[
+              ...fcEvents,
+              // Availability notes as all-day events in the all-day row
+              ...Object.entries(availability).map(([date, notes]) => ({
+                id: `avail-${date}`,
+                title: notes,
+                start: date,
+                allDay: true,
+                backgroundColor: '#8B0000',
+                borderColor: '#8B0000',
+                textColor: '#fff',
+                editable: false,
+                classNames: ['fc-avail-event'],
+                extendedProps: { isAvailability: true, availDate: date, availNotes: notes },
+              }))
+            ]}
             select={handleDateSelect}
-            eventClick={handleEventClick}
+            eventClick={(info) => {
+              if (info.event.extendedProps?.isAvailability) {
+                const date = info.event.extendedProps.availDate
+                const notes = info.event.extendedProps.availNotes
+                setAvailEdit({ date, value: notes })
+                info.jsEvent.stopPropagation()
+                return
+              }
+              handleEventClick(info)
+            }}
             eventDrop={handleEventDrop}
             eventResize={handleEventResize}
             drop={handleExternalDrop}
             slotMinTime="00:00:00"
             slotMaxTime="24:00:00"
-            scrollTime="00:00:00"
+            slotDuration="00:30:00"
+            slotLabelInterval="01:00:00"
+            scrollTime="07:00:00"
             allDaySlot={true}
             nowIndicator={true}
-            datesSet={(info) => { fetchEvents(info.startStr, info.endStr); fetchAvailability(info.startStr, info.endStr); const dates: string[] = []; const cur = new Date(info.start); while (cur < info.end) { dates.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); } setVisibleDates(dates); }}
+            datesSet={(info) => {
+              fetchEvents(info.startStr, info.endStr)
+              fetchAvailability(info.startStr, info.endStr)
+              const dates: string[] = []
+              const cur = new Date(info.start)
+              while (cur < info.end) {
+                dates.push(cur.toISOString().slice(0, 10))
+                cur.setDate(cur.getDate() + 1)
+              }
+              setVisibleDates(dates)
+            }}
           />
           </div>
         </div>
@@ -881,6 +843,56 @@ export default function CalendarPage() {
                   style={{ fontSize: 12, padding: '7px 16px', borderRadius: 6, border: 'none', background: saving ? '#aaa' : '#036A43', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500 }}>
                   {saving ? 'Saving…' : 'Save Event'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Availability Edit Modal ─── */}
+      {availEdit && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 10, width: 400, maxWidth: '90vw', boxShadow: '0 8px 32px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+            <div style={{ background: '#8B0000', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
+                Availability Note — {new Date(availEdit.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+              </div>
+              <button onClick={() => setAvailEdit(null)} style={{ border: 'none', background: 'none', color: 'rgba(255,255,255,0.8)', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <textarea
+                autoFocus
+                value={availEdit.value}
+                onChange={e => setAvailEdit({ ...availEdit, value: e.target.value })}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') setAvailEdit(null)
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveAvailability(availEdit.date, availEdit.value)
+                }}
+                placeholder={`e.g.\nRicardo off all day\nJay W available AM only\nMatt Burger out`}
+                rows={4}
+                style={{ width: '100%', fontSize: 12, padding: '8px 10px', borderRadius: 6, border: '1px solid #ccc', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', lineHeight: 1.6 }}
+              />
+              <div style={{ fontSize: 11, color: '#aaa' }}>Tip: Press Cmd+Enter to save, Escape to cancel</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                {availability[availEdit.date] && (
+                  <button
+                    onClick={() => saveAvailability(availEdit.date, '')}
+                    disabled={availSaving}
+                    style={{ fontSize: 12, padding: '7px 12px', borderRadius: 6, border: '1px solid #f5c2c2', background: '#fff5f5', color: '#A32D2D', cursor: 'pointer' }}
+                  >
+                    Clear
+                  </button>
+                )}
+                <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+                  <button onClick={() => setAvailEdit(null)} style={{ fontSize: 12, padding: '7px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>Cancel</button>
+                  <button
+                    onClick={() => saveAvailability(availEdit.date, availEdit.value)}
+                    disabled={availSaving}
+                    style={{ fontSize: 12, padding: '7px 16px', borderRadius: 6, border: 'none', background: availSaving ? '#aaa' : '#8B0000', color: '#fff', cursor: availSaving ? 'not-allowed' : 'pointer', fontWeight: 500 }}
+                  >
+                    {availSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
