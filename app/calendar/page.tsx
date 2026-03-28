@@ -114,6 +114,10 @@ export default function CalendarPage() {
 
   const [events, setEvents] = useState<CalEvent[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
+  const [availability, setAvailability] = useState<Record<string, string>>({})
+  const [availEdit, setAvailEdit] = useState<{ date: string; value: string } | null>(null)
+  const [availSaving, setAvailSaving] = useState(false)
+  const [visibleDates, setVisibleDates] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Job[]>([])
   const [searching, setSearching] = useState(false)
@@ -132,6 +136,41 @@ export default function CalendarPage() {
   const [formNotes, setFormNotes] = useState('')
   const [formStart, setFormStart] = useState('')
   const [formEnd, setFormEnd] = useState('')
+
+  const fetchAvailability = useCallback(async (start: string, end: string) => {
+    try {
+      const res = await fetch(`${API}/api/calendar/availability?start=${start}&end=${end}`)
+      const data = await res.json()
+      if (Array.isArray(data)) {
+        const map: Record<string, string> = {}
+        data.forEach((a: any) => { map[a.date] = a.notes })
+        setAvailability(map)
+      }
+    } catch (err) {
+      console.error('Failed to fetch availability', err)
+    }
+  }, [])
+
+  const saveAvailability = async (date: string, notes: string) => {
+    setAvailSaving(true)
+    try {
+      await fetch(`${API}/api/calendar/availability`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, notes }),
+      })
+      setAvailability(prev => {
+        const next = { ...prev }
+        if (!notes.trim()) { delete next[date] } else { next[date] = notes.trim() }
+        return next
+      })
+      setAvailEdit(null)
+    } catch (err) {
+      console.error('Failed to save availability', err)
+    } finally {
+      setAvailSaving(false)
+    }
+  }
 
   const fetchEvents = useCallback(async (start: string, end: string) => {
     try {
@@ -161,7 +200,8 @@ export default function CalendarPage() {
     const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
     const end = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString()
     fetchEvents(start, end)
-  }, [fetchEvents, fetchJobs])
+    fetchAvailability(start, end)
+  }, [fetchEvents, fetchJobs, fetchAvailability])
 
   // Debounced search
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -516,7 +556,105 @@ export default function CalendarPage() {
       <Sidebar />
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+          {/* ─── Crew Availability Bar ─── */}
+          {visibleDates.length > 0 && (
+            <div style={{
+              display: 'flex',
+              borderBottom: '1px solid #e0e0de',
+              background: '#fff',
+              flexShrink: 0,
+              minHeight: 32,
+            }}>
+              {/* Spacer to align with calendar time gutter (~55px) */}
+              <div style={{ width: 55, flexShrink: 0, borderRight: '1px solid #e8e8e8' }} />
+              {visibleDates.map(date => {
+                const notes = availability[date]
+                const isEditing = availEdit?.date === date
+                const dayLabel = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' })
+                return (
+                  <div key={date} style={{ flex: 1, borderRight: '1px solid #e8e8e8', position: 'relative', minWidth: 0 }}>
+                    {isEditing ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 4px', height: '100%' }}>
+                        <input
+                          autoFocus
+                          value={availEdit.value}
+                          onChange={e => setAvailEdit({ date, value: e.target.value })}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') saveAvailability(date, availEdit.value)
+                            if (e.key === 'Escape') setAvailEdit(null)
+                          }}
+                          placeholder="e.g. Ricardo off, Jay W only..."
+                          style={{
+                            flex: 1, fontSize: 11, padding: '2px 6px', borderRadius: 4,
+                            border: '1px solid #8B0000', outline: 'none', minWidth: 0,
+                          }}
+                        />
+                        <button
+                          onClick={() => saveAvailability(date, availEdit.value)}
+                          disabled={availSaving}
+                          style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, border: 'none', background: '#8B0000', color: '#fff', cursor: 'pointer', flexShrink: 0 }}
+                        >
+                          {availSaving ? '…' : '✓'}
+                        </button>
+                        <button
+                          onClick={() => setAvailEdit(null)}
+                          style={{ fontSize: 10, padding: '2px 5px', borderRadius: 4, border: '1px solid #ccc', background: '#fff', color: '#555', cursor: 'pointer', flexShrink: 0 }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : notes ? (
+                      <div
+                        onClick={() => setAvailEdit({ date, value: notes })}
+                        title={`Click to edit: ${notes}`}
+                        style={{
+                          background: '#8B0000',
+                          color: '#fff',
+                          fontSize: 10,
+                          fontWeight: 500,
+                          padding: '3px 6px',
+                          cursor: 'pointer',
+                          height: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          overflow: 'hidden',
+                          whiteSpace: 'nowrap',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {notes}
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => setAvailEdit({ date, value: '' })}
+                        title={`Add note for ${dayLabel}`}
+                        style={{
+                          height: '100%',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          opacity: 0,
+                          transition: 'opacity 0.15s',
+                          fontSize: 14,
+                          color: '#ccc',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                        onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
+                      >
+                        +
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Calendar */}
+          <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -538,8 +676,9 @@ export default function CalendarPage() {
             scrollTime="00:00:00"
             allDaySlot={true}
             nowIndicator={true}
-            datesSet={(info) => fetchEvents(info.startStr, info.endStr)}
+            datesSet={(info) => { fetchEvents(info.startStr, info.endStr); fetchAvailability(info.startStr, info.endStr); const dates: string[] = []; const cur = new Date(info.start); while (cur < info.end) { dates.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); } setVisibleDates(dates); }}
           />
+          </div>
         </div>
 
         {/* Unscheduled Jobs Sidebar */}
