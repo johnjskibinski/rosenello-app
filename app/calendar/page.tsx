@@ -203,14 +203,6 @@ export default function CalendarPage() {
     fetchAvailability(start, end)
   }, [fetchEvents, fetchJobs, fetchAvailability])
 
-  // Inject compact slot height after FullCalendar mounts (FC injects its own inline styles that override CSS)
-  useEffect(() => {
-    const style = document.createElement('style')
-    style.id = 'fc-compact-override'
-    style.textContent = '.fc .fc-timegrid-slot { height: 14px !important; min-height: 14px !important; } .fc .fc-timegrid-slot-label { font-size: 10px !important; }'
-    document.head.appendChild(style)
-    return () => { document.getElementById('fc-compact-override')?.remove() }
-  }, [])
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value
     setSearchQuery(q)
@@ -581,6 +573,20 @@ export default function CalendarPage() {
             initialView="timeGridWeek"
             headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' }}
             height="100%"
+            expandRows={false}
+            slotLaneDidMount={(arg) => {
+              arg.el.style.setProperty('height', '14px', 'important')
+              arg.el.style.setProperty('max-height', '14px', 'important')
+              if (arg.el.closest('tr')) {
+                (arg.el.closest('tr') as HTMLElement).style.setProperty('height', '14px', 'important')
+              }
+            }}
+            slotLabelDidMount={(arg) => {
+              arg.el.style.fontSize = '9px'
+              if (arg.el.closest('tr')) {
+                (arg.el.closest('tr') as HTMLElement).style.setProperty('height', '14px', 'important')
+              }
+            }}
             editable={true}
             selectable={true}
             selectMirror={true}
