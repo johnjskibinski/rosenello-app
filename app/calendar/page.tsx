@@ -566,19 +566,6 @@ export default function CalendarPage() {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-          {/* Compact slot CSS */}
-          <style>{`
-            .fc .fc-timegrid-slot { height: 16px !important; }
-            .fc .fc-timegrid-slot-label { font-size: 10px !important; }
-            .fc .fc-event { font-size: 11px !important; }
-            .fc .fc-col-header-cell { font-size: 11px !important; }
-            .fc .fc-daygrid-event { font-size: 11px !important; }
-            .fc .fc-toolbar-title { font-size: 16px !important; }
-            .fc .fc-button { font-size: 11px !important; padding: 4px 8px !important; }
-            .fc-avail-event { cursor: pointer !important; }
-            .fc-avail-event .fc-event-main { padding: 2px 4px !important; }
-          `}</style>
-
           {/* Calendar — availability notes render as all-day events in the all-day row */}
           <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px' }}>
           <FullCalendar
