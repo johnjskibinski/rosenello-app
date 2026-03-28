@@ -111,7 +111,7 @@ export default function ProductionBoard() {
   const OVERDUE_SCHED = ['SN', 'PU']
   const ORDERED_OR_BEYOND = ['2', 'S', '5', 'T', 'SI', 'CM', 'U']
   const sq = search.toLowerCase()
-  const matchesSq = (j) => !sq || ((j.customer_first + ' ' + j.customer_last).toLowerCase().includes(sq) || (j.address||'').toLowerCase().includes(sq) || (j.contract_id||'').toLowerCase().includes(sq))
+  const matchesSq = (j: any) => !sq || ((j.customer_first + ' ' + j.customer_last).toLowerCase().includes(sq) || (j.address||'').toLowerCase().includes(sq) || (j.contract_id||'').toLowerCase().includes(sq))
   const overdueToSchedule = activeTab === 'all' ? activeJobs.filter(j => {
     if (!OVERDUE_SCHED.includes(j.lp_status)) return false
     if (!j.status_entered_at) return false
