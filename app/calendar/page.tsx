@@ -203,7 +203,14 @@ export default function CalendarPage() {
     fetchAvailability(start, end)
   }, [fetchEvents, fetchJobs, fetchAvailability])
 
-  // Debounced search
+  // Inject compact slot height after FullCalendar mounts (FC injects its own inline styles that override CSS)
+  useEffect(() => {
+    const style = document.createElement('style')
+    style.id = 'fc-compact-override'
+    style.textContent = '.fc .fc-timegrid-slot { height: 14px !important; min-height: 14px !important; } .fc .fc-timegrid-slot-label { font-size: 10px !important; }'
+    document.head.appendChild(style)
+    return () => { document.getElementById('fc-compact-override')?.remove() }
+  }, [])
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value
     setSearchQuery(q)
