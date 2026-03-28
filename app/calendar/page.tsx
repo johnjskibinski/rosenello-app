@@ -575,17 +575,19 @@ export default function CalendarPage() {
             height="100%"
             expandRows={false}
             slotLaneDidMount={(arg) => {
-              arg.el.style.setProperty('height', '14px', 'important')
-              arg.el.style.setProperty('max-height', '14px', 'important')
-              if (arg.el.closest('tr')) {
-                (arg.el.closest('tr') as HTMLElement).style.setProperty('height', '14px', 'important')
-              }
+              arg.el.style.display = 'block'
+              arg.el.style.height = '14px'
+              arg.el.style.overflow = 'hidden'
+              const tr = arg.el.closest('tr') as HTMLElement | null
+              if (tr) { tr.style.display = 'block'; tr.style.height = '14px' }
             }}
             slotLabelDidMount={(arg) => {
+              arg.el.style.display = 'block'
+              arg.el.style.height = '14px'
               arg.el.style.fontSize = '9px'
-              if (arg.el.closest('tr')) {
-                (arg.el.closest('tr') as HTMLElement).style.setProperty('height', '14px', 'important')
-              }
+              arg.el.style.lineHeight = '14px'
+              const tr = arg.el.closest('tr') as HTMLElement | null
+              if (tr) { tr.style.display = 'block'; tr.style.height = '14px' }
             }}
             editable={true}
             selectable={true}
