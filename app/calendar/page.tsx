@@ -579,17 +579,19 @@ export default function CalendarPage() {
               arg.el.style.height = '17px'
               arg.el.style.overflow = 'hidden'
               const tr = arg.el.closest('tr') as HTMLElement | null
-              if (tr) { tr.style.display = 'block'; tr.style.height = '17px' }
+              if (tr) { tr.style.display = 'block'; tr.style.height = '17px'; tr.style.position = 'relative' }
             }}
             slotLabelDidMount={(arg) => {
-              arg.el.style.display = 'block'
-              arg.el.style.height = '34px'
+              // Label spans 2 slots (1 hour) — position it to float left of the grid
+              arg.el.style.position = 'absolute'
+              arg.el.style.left = '0'
+              arg.el.style.top = '0'
               arg.el.style.fontSize = '10px'
-              arg.el.style.lineHeight = '34px'
-              arg.el.style.padding = '0 4px'
+              arg.el.style.lineHeight = '17px'
               arg.el.style.color = '#555'
-              const tr = arg.el.closest('tr') as HTMLElement | null
-              if (tr) { tr.style.display = 'block'; tr.style.height = '34px' }
+              arg.el.style.padding = '0 4px'
+              arg.el.style.whiteSpace = 'nowrap'
+              arg.el.style.zIndex = '1'
             }}
             editable={true}
             selectable={true}
