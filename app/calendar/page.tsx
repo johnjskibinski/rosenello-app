@@ -576,18 +576,20 @@ export default function CalendarPage() {
             expandRows={false}
             slotLaneDidMount={(arg) => {
               arg.el.style.display = 'block'
-              arg.el.style.height = '14px'
+              arg.el.style.height = '17px'
               arg.el.style.overflow = 'hidden'
               const tr = arg.el.closest('tr') as HTMLElement | null
-              if (tr) { tr.style.display = 'block'; tr.style.height = '14px' }
+              if (tr) { tr.style.display = 'block'; tr.style.height = '17px' }
             }}
             slotLabelDidMount={(arg) => {
               arg.el.style.display = 'block'
-              arg.el.style.height = '14px'
-              arg.el.style.fontSize = '9px'
-              arg.el.style.lineHeight = '14px'
+              arg.el.style.height = '34px'
+              arg.el.style.fontSize = '10px'
+              arg.el.style.lineHeight = '34px'
+              arg.el.style.padding = '0 4px'
+              arg.el.style.color = '#555'
               const tr = arg.el.closest('tr') as HTMLElement | null
-              if (tr) { tr.style.display = 'block'; tr.style.height = '14px' }
+              if (tr) { tr.style.display = 'block'; tr.style.height = '34px' }
             }}
             editable={true}
             selectable={true}
