@@ -39,6 +39,7 @@ interface CalEvent {
   lp_job_id: number | null
   event_type: string
   installer: string | null
+  installers: string[]
   title: string
   notes: string | null
   location: string
@@ -135,7 +136,7 @@ export default function CalendarPage() {
 
   const [formTitle, setFormTitle] = useState('')
   const [formType, setFormType] = useState('measure')
-  const [formInstaller, setFormInstaller] = useState('')
+  const [formInstallers, setFormInstallers] = useState<string[]>([])
   const [formNotes, setFormNotes] = useState('')
   const [formStart, setFormStart] = useState('')
   const [formEnd, setFormEnd] = useState('')
@@ -302,7 +303,7 @@ export default function CalendarPage() {
   const openModal = (startTime: string, endTime: string, job: Job | null = null) => {
     setFormTitle(job ? `${job.customer_last}, ${job.customer_first}` : '')
     setFormType('measure')
-    setFormInstaller('')
+    setFormInstallers([])
     setFormNotes('')
     setFormStart(startTime)
     setFormEnd(endTime)
@@ -334,7 +335,7 @@ export default function CalendarPage() {
     const rect = info.el.getBoundingClientRect()
     setFormTitle(ev.title || '')
     setFormType(ev.event_type)
-    setFormInstaller(ev.installer || '')
+    setFormInstallers(ev.installers || (ev.installer ? [ev.installer] : []))
     setFormNotes(ev.notes || '')
     setFormStart(ev.start_time)
     setFormEnd(ev.end_time)
@@ -391,7 +392,8 @@ export default function CalendarPage() {
         body: JSON.stringify({
           lp_job_id: modal.job?.lp_job_id || null,
           event_type: formType,
-          installer: formInstaller || null,
+          installer: formInstallers[0] || null,
+          installers: formInstallers,
           title: formTitle || null,
           start_time: formStart,
           end_time: formEnd,
@@ -460,6 +462,7 @@ export default function CalendarPage() {
           lp_job_id: ev.lp_job_id,
           event_type: ev.event_type,
           installer: ev.installer,
+          installers: ev.installers || [],
           title: ev.title,
           location: ev.location,
           start_time: newStart,
@@ -490,7 +493,8 @@ export default function CalendarPage() {
         body: JSON.stringify({
           title: formTitle || null,
           event_type: formType,
-          installer: formInstaller || null,
+          installer: formInstallers[0] || null,
+            installers: formInstallers,
           start_time: formStart,
           end_time: formEnd,
           notes: formNotes || null,
@@ -564,7 +568,14 @@ export default function CalendarPage() {
     .filter(e => e.event_type !== 'availability')
     .map(e => ({
       id: e.id,
-      title: e.installer ? `(${e.installer}) ${e.title}` : e.title,
+      title: (() => {
+        const instList = e.installers?.length ? e.installers : (e.installer ? [e.installer] : [])
+        if (instList.length === 0) return e.title
+        // Build initials display for tile
+        const tileInstallers = instList.join(', ')
+        const base = e.title?.replace(/^([^)]+)s*/, '') || e.title
+        return `(${tileInstallers}) ${base}`
+      })(),
       start: e.start_time,
       end: e.end_time,
       allDay: e.all_day,
@@ -917,13 +928,20 @@ export default function CalendarPage() {
                   <input type="datetime-local" value={formEnd.slice(0, 16)} onChange={e => setFormEnd(e.target.value)} style={inputStyle()} />
                 </div>
               </div>
-              {(formType === 'install' || formType === 'service') && (
+              {(formType === 'install' || formType === 'service' || formType === 'measure') && (
                 <div>
                   <label style={labelStyle}>Crew</label>
-                  <select value={formInstaller} onChange={e => setFormInstaller(e.target.value)} style={{ ...inputStyle(), background: '#fff' }}>
-                    <option value="">Select crew...</option>
-                    {installers.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                    {installers.map(name => {
+                      const checked = formInstallers.includes(name)
+                      return (
+                        <label key={name} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '4px 8px', borderRadius: 5, border: `1px solid ${checked ? '#036A43' : '#ccc'}`, background: checked ? '#f0faf5' : '#fff', cursor: 'pointer', userSelect: 'none' }}>
+                          <input type="checkbox" checked={checked} onChange={() => setFormInstallers(prev => checked ? prev.filter(i => i !== name) : [...prev, name])} style={{ margin: 0 }} />
+                          {name}
+                        </label>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
               <div>
@@ -1103,13 +1121,20 @@ export default function CalendarPage() {
                     <input type="datetime-local" value={formEnd.slice(0, 16)} onChange={e => setFormEnd(e.target.value)} style={inputStyle(12)} />
                   </div>
                 </div>
-                {(formType === 'install' || formType === 'service') && (
+                {(formType === 'install' || formType === 'service' || formType === 'measure') && (
                   <div>
                     <label style={labelStyle}>Crew</label>
-                    <select value={formInstaller} onChange={e => setFormInstaller(e.target.value)} style={{ ...inputStyle(12), background: '#fff' }}>
-                      <option value="">Select crew...</option>
-                      {installers.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 2 }}>
+                      {installers.map(name => {
+                        const checked = formInstallers.includes(name)
+                        return (
+                          <label key={name} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '3px 7px', borderRadius: 5, border: `1px solid ${checked ? '#036A43' : '#ccc'}`, background: checked ? '#f0faf5' : '#fff', cursor: 'pointer', userSelect: 'none' }}>
+                            <input type="checkbox" checked={checked} onChange={() => setFormInstallers(prev => checked ? prev.filter(i => i !== name) : [...prev, name])} style={{ margin: 0 }} />
+                            {name}
+                          </label>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
                 <div>
