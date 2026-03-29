@@ -108,7 +108,7 @@ export default function ProductionBoard() {
     return acc
   }, {} as Record<string, number>)
 
-  const OVERDUE_SCHED = ['SN', 'PU']
+  const OVERDUE_SCHED = ['SN', 'PU', 'N']
   const ORDERED_OR_BEYOND = ['2', 'NS', 'S', '5', 'T', 'SI', 'CM', 'U']
   const sq = search.toLowerCase()
   const matchesSq = (j: any) => !sq || ((j.customer_first + ' ' + j.customer_last).toLowerCase().includes(sq) || (j.address||'').toLowerCase().includes(sq) || (j.contract_id||'').toLowerCase().includes(sq))
