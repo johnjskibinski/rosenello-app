@@ -509,9 +509,26 @@ export default function CalendarPage() {
     if (!desc) return ''
     return desc
       .split('\n')
-      .filter(line => !line.includes('http') && !line.includes('Measure Packet') && !line.includes('CompanyCam'))
+      .filter(line => !line.includes('http') && !line.includes('Measure Packet') && !line.includes('CompanyCam') && !line.includes('Phone:'))
       .join('\n')
       .trim()
+  }
+
+  const extractLinks = (desc: string | null): { measureUrl: string | null; companycamUrl: string | null; phone: string | null } => {
+    if (!desc) return { measureUrl: null, companycamUrl: null, phone: null }
+    const lines = desc.split('\n')
+    let measureUrl: string | null = null
+    let companycamUrl: string | null = null
+    let phone: string | null = null
+    for (const line of lines) {
+      const urlMatch = line.match(/<(https?:\/\/[^>]+)>/)
+      const url = urlMatch ? urlMatch[1] : (line.match(/https?:\/\/\S+/) || [])[0] || null
+      if (url && (line.includes('Measure Packet') || url.includes('docs.google.com') || url.includes('drive.google.com'))) measureUrl = url
+      else if (url && (line.includes('CompanyCam') || url.includes('companycam.com'))) companycamUrl = url
+      const phoneMatch = line.match(/Phone:s*(.+)/)
+      if (phoneMatch) phone = phoneMatch[1].trim()
+    }
+    return { measureUrl, companycamUrl, phone }
   }
 
   const formatPhone = (raw: any): string => {
@@ -1031,7 +1048,13 @@ export default function CalendarPage() {
             )}
             {(() => {
               const cleaned = cleanDescription(popup.event.notes)
-              return cleaned ? <div style={{ whiteSpace: 'pre-wrap', color: '#444', fontSize: 12, lineHeight: 1.5 }}>{cleaned}</div> : null
+              const { measureUrl, companycamUrl, phone } = extractLinks(popup.event.notes)
+              return <>
+                {phone && <div style={{ color: '#036A43', fontWeight: 500 }}>📞 {phone}</div>}
+                {cleaned ? <div style={{ whiteSpace: 'pre-wrap', color: '#444', fontSize: 12, lineHeight: 1.5 }}>{cleaned}</div> : null}
+                {measureUrl && <a href={measureUrl} target="_blank" rel="noreferrer" style={{ color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>📋 Measure Packet</a>}
+                {companycamUrl && <a href={companycamUrl} target="_blank" rel="noreferrer" style={{ color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>📸 CompanyCam</a>}
+              </>
             })()}
             {popup.event.lp_job_id && (
               <a href={`https://e5d8a.leadperfection.com/jobdetail.html?jobid=${popup.event.lp_job_id}`} target="_blank" rel="noreferrer"
