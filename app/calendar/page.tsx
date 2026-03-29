@@ -457,7 +457,6 @@ export default function CalendarPage() {
           event_type: ev.event_type,
           installer: ev.installer,
           title: ev.title,
-          description: ev.description,
           location: ev.location,
           start_time: newStart,
           end_time: newEnd,
