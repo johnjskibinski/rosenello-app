@@ -157,10 +157,14 @@ export default function CalendarPage() {
   const saveAvailability = async (date: string, notes: string) => {
     setAvailSaving(true)
     try {
+      // Pass existing gcal_event_ids so backend can delete old GCal events before recreating
+      const existing = await fetch(`${API}/api/calendar/availability?start=${date}&end=${date}`)
+      const existingData = await existing.json()
+      const gcal_event_ids = existingData?.[0]?.gcal_event_ids || []
       await fetch(`${API}/api/calendar/availability`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, notes }),
+        body: JSON.stringify({ date, notes, gcal_event_ids }),
       })
       setAvailability(prev => {
         const next = { ...prev }
