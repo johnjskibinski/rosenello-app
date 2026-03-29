@@ -514,6 +514,16 @@ export default function CalendarPage() {
       .trim()
   }
 
+  const unwrapGoogleUrl = (url: string): string => {
+    try {
+      if (url.includes('google.com/url')) {
+        const u = new URL(url)
+        return u.searchParams.get('q') || url
+      }
+    } catch {}
+    return url
+  }
+
   const extractLinks = (desc: string | null): { measureUrl: string | null; companycamUrl: string | null; phone: string | null } => {
     if (!desc) return { measureUrl: null, companycamUrl: null, phone: null }
     const lines = desc.split('\n')
@@ -522,7 +532,8 @@ export default function CalendarPage() {
     let phone: string | null = null
     for (const line of lines) {
       const urlMatch = line.match(/<(https?:\/\/[^>]+)>/)
-      const url = urlMatch ? urlMatch[1] : (line.match(/https?:\/\/\S+/) || [])[0] || null
+      const rawUrl = urlMatch ? urlMatch[1] : (line.match(/https?:\/\/\S+/) || [])[0] || null
+      const url = rawUrl ? unwrapGoogleUrl(rawUrl) : null
       if (url && (line.includes('Measure Packet') || url.includes('docs.google.com') || url.includes('drive.google.com'))) measureUrl = url
       else if (url && (line.includes('CompanyCam') || url.includes('companycam.com'))) companycamUrl = url
       const phoneMatch = line.match(/Phone:s*(.+)/)
