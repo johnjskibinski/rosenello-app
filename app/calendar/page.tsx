@@ -1030,17 +1030,9 @@ export default function CalendarPage() {
                 style={{ color: '#036A43', textDecoration: 'none' }}>📍 {popup.event.location}</a>
             )}
             {(() => {
-              const cleaned = cleanDescription(popup.event.description)
+              const cleaned = cleanDescription(popup.event.notes)
               return cleaned ? <div style={{ whiteSpace: 'pre-wrap', color: '#444', fontSize: 12, lineHeight: 1.5 }}>{cleaned}</div> : null
             })()}
-            {popup.event.measure_sheet_url && (
-              <a href={popup.event.measure_sheet_url} target="_blank" rel="noreferrer"
-                style={{ color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>📋 Measure Packet</a>
-            )}
-            {popup.event.companycam_url && (
-              <a href={popup.event.companycam_url} target="_blank" rel="noreferrer"
-                style={{ color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>📸 CompanyCam</a>
-            )}
             {popup.event.lp_job_id && (
               <a href={`https://e5d8a.leadperfection.com/jobdetail.html?jobid=${popup.event.lp_job_id}`} target="_blank" rel="noreferrer"
                 style={{ color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>🔗 Open in LP</a>
