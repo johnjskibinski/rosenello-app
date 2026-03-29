@@ -132,6 +132,7 @@ export default function CalendarPage() {
   const [duplicating, setDuplicating] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [installers, setInstallers] = useState<string[]>(DEFAULT_CREWS)
+  const [installerObjects, setInstallerObjects] = useState<{name: string, initials: string}[]>([])
   const [syncing, setSyncing] = useState(false)
 
   const [formTitle, setFormTitle] = useState('')
@@ -206,7 +207,10 @@ export default function CalendarPage() {
     try {
       const res = await fetch(`${API}/api/calendar/installers`)
       const data = await res.json()
-      if (Array.isArray(data) && data.length > 0) setInstallers(data.map((i: any) => i.name))
+      if (Array.isArray(data) && data.length > 0) {
+        setInstallers(data.map((i: any) => i.name))
+        setInstallerObjects(data.map((i: any) => ({ name: i.name, initials: i.initials || i.name })))
+      }
     } catch {}
   }, [])
 
@@ -570,11 +574,13 @@ export default function CalendarPage() {
       id: e.id,
       title: (() => {
         const instList = e.installers?.length ? e.installers : (e.installer ? [e.installer] : [])
-        if (instList.length === 0) return e.title
-        // Build initials display for tile
-        const tileInstallers = instList.join(', ')
+        if (instList.length === 0) return e.title?.replace(/^([^)]+)s*/, '') || e.title
+        const initials = instList.map(name => {
+          const found = installerObjects.find(o => o.name === name)
+          return found?.initials || name
+        }).join(', ')
         const base = e.title?.replace(/^([^)]+)s*/, '') || e.title
-        return `(${tileInstallers}) ${base}`
+        return `(${initials}) ${base}`
       })(),
       start: e.start_time,
       end: e.end_time,
