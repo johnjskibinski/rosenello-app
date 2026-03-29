@@ -31,22 +31,22 @@ const SIDEBAR_STATUS_LABELS: Record<string, string> = {
   NS: 'Need to Schedule',
 }
 
-const CREWS = ['Jay W', 'Matt Burger', 'Mike', 'Joe', 'Scott', 'Ricardo', 'Mike K', 'Jeremiah Construction', 'Matus Construction', "Richy's Construction"]
+const DEFAULT_CREWS = ['Jay W', 'Matt Burger', 'Mike', 'Joe', 'Scott', 'Ricardo', 'Mike K', 'Manuel', 'STK', 'Antoine', 'Jeremiah Construction', 'Matus Construction', "Richy's Construction"]
 
 interface CalEvent {
   id: string
+  gcal_event_id: string | null
   lp_job_id: number | null
   event_type: string
-  crew: string | null
+  installer: string | null
   title: string
-  description: string
+  notes: string | null
   location: string
   start_time: string
   end_time: string
-  color_id: string
-  companycam_url: string | null
-  measure_sheet_url: string | null
-  notes: string | null
+  color_id: string | null
+  linked: boolean
+  all_day: boolean
 }
 
 interface Job {
@@ -129,10 +129,13 @@ export default function CalendarPage() {
   const [deleting, setDeleting] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [installers, setInstallers] = useState<string[]>(DEFAULT_CREWS)
+  const [syncing, setSyncing] = useState(false)
 
   const [formTitle, setFormTitle] = useState('')
   const [formType, setFormType] = useState('measure')
-  const [formCrew, setFormCrew] = useState('')
+  const [formInstaller, setFormInstaller] = useState('')
   const [formNotes, setFormNotes] = useState('')
   const [formStart, setFormStart] = useState('')
   const [formEnd, setFormEnd] = useState('')
@@ -174,7 +177,7 @@ export default function CalendarPage() {
 
   const fetchEvents = useCallback(async (start: string, end: string) => {
     try {
-      const res = await fetch(`${API}/api/calendar/events?start=${start}&end=${end}`)
+      const res = await fetch(`${API}/api/calendar?start=${start}&end=${end}`)
       const data = await res.json()
       setEvents(Array.isArray(data) ? data : [])
     } catch (err) {
@@ -194,14 +197,35 @@ export default function CalendarPage() {
     }
   }, [])
 
+  const fetchInstallers = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/calendar/installers`)
+      const data = await res.json()
+      if (Array.isArray(data) && data.length > 0) setInstallers(data.map((i: any) => i.name))
+    } catch {}
+  }, [])
+
+  const handleGCalSync = async () => {
+    setSyncing(true)
+    try {
+      await fetch(`${API}/api/calendar/sync`, { method: 'POST' })
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+      const end = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString()
+      await fetchEvents(start, end)
+    } catch (err) { console.error(err) }
+    finally { setSyncing(false) }
+  }
+
   useEffect(() => {
     fetchJobs()
+    fetchInstallers()
     const now = new Date()
     const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
     const end = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString()
     fetchEvents(start, end)
     fetchAvailability(start, end)
-  }, [fetchEvents, fetchJobs, fetchAvailability])
+  }, [fetchEvents, fetchJobs, fetchAvailability, fetchInstallers])
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value
@@ -274,7 +298,7 @@ export default function CalendarPage() {
   const openModal = (startTime: string, endTime: string, job: Job | null = null) => {
     setFormTitle(job ? `${job.customer_last}, ${job.customer_first}` : '')
     setFormType('measure')
-    setFormCrew('')
+    setFormInstaller('')
     setFormNotes('')
     setFormStart(startTime)
     setFormEnd(endTime)
@@ -306,7 +330,7 @@ export default function CalendarPage() {
     const rect = info.el.getBoundingClientRect()
     setFormTitle(ev.title || '')
     setFormType(ev.event_type)
-    setFormCrew(ev.crew || '')
+    setFormInstaller(ev.installer || '')
     setFormNotes(ev.notes || '')
     setFormStart(ev.start_time)
     setFormEnd(ev.end_time)
@@ -363,7 +387,7 @@ export default function CalendarPage() {
         body: JSON.stringify({
           lp_job_id: modal.job?.lp_job_id || null,
           event_type: formType,
-          crew: formCrew || null,
+          installer: formInstaller || null,
           title: formTitle || null,
           start_time: formStart,
           end_time: formEnd,
@@ -382,13 +406,19 @@ export default function CalendarPage() {
     }
   }
 
-  const handleDeleteEvent = async () => {
+  const handleDeleteEvent = () => {
+    if (!popup.event) return
+    setDeleteConfirm(true)
+  }
+
+  const confirmDelete = async (includeGCal: boolean) => {
     if (!popup.event) return
     setDeleting(true)
     try {
-      await fetch(`${API}/api/calendar/events/${popup.event.id}`, { method: 'DELETE' })
+      await fetch(`${API}/api/calendar/events/${popup.event.id}?gcal=${includeGCal}`, { method: 'DELETE' })
       setEvents(prev => prev.filter(e => e.id !== popup.event!.id))
       setPopup({ open: false, event: null, x: 0, y: 0 })
+      setDeleteConfirm(false)
     } catch (err) {
       console.error(err)
     } finally {
@@ -425,7 +455,7 @@ export default function CalendarPage() {
         body: JSON.stringify({
           lp_job_id: ev.lp_job_id,
           event_type: ev.event_type,
-          crew: ev.crew,
+          installer: ev.installer,
           title: ev.title,
           description: ev.description,
           location: ev.location,
@@ -457,11 +487,11 @@ export default function CalendarPage() {
         body: JSON.stringify({
           title: formTitle || null,
           event_type: formType,
-          crew: formCrew || null,
+          installer: formInstaller || null,
           start_time: formStart,
           end_time: formEnd,
           notes: formNotes || null,
-          color_id: formType === 'measure' ? '5' : formType === 'install' ? '6' : formType === 'service' ? '7' : '8',
+          color_id: formType === 'measure' ? '5' : '6',
         }),
       })
       if (!res.ok) throw new Error('Edit failed')
@@ -494,18 +524,35 @@ export default function CalendarPage() {
     return String(p)
   }
 
-  const fcEvents = events.map(e => ({
-    id: e.id,
-    title: e.title,
-    start: e.start_time,
-    end: e.end_time,
-    backgroundColor: COLOR_MAP[e.event_type] || '#616161',
-    borderColor: COLOR_MAP[e.event_type] || '#616161',
-    textColor: e.event_type === 'measure' ? '#1a1a1a' : '#ffffff',
-  }))
+  // Jobs that already have a scheduled event — used to filter sidebar
+  const scheduledJobIds = new Set(events.filter(e => e.lp_job_id && e.event_type !== 'availability').map(e => e.lp_job_id))
+  const measureScheduledIds = new Set(events.filter(e => e.lp_job_id && e.event_type === 'measure').map(e => e.lp_job_id))
+  const installScheduledIds = new Set(events.filter(e => e.lp_job_id && e.event_type === 'install').map(e => e.lp_job_id))
 
+  const fcEvents = events
+    .filter(e => e.event_type !== 'availability')
+    .map(e => ({
+      id: e.id,
+      title: e.installer ? `(${e.installer}) ${e.title}` : e.title,
+      start: e.start_time,
+      end: e.end_time,
+      allDay: e.all_day,
+      backgroundColor: COLOR_MAP[e.event_type] || '#616161',
+      borderColor: COLOR_MAP[e.event_type] || '#616161',
+      textColor: e.event_type === 'measure' ? '#1a1a1a' : '#ffffff',
+    }))
+
+  const MEASURE_STATUSES = ['N', 'SN', 'PU', 'SS']
+  const INSTALL_STATUSES = ['2', 'NS']
   const groupedJobs = SIDEBAR_STATUSES.reduce((acc, status) => {
-    acc[status] = jobs.filter(j => j.lp_status === status)
+    acc[status] = jobs.filter(j => {
+      if (j.lp_status === status) {
+        if (MEASURE_STATUSES.includes(j.lp_status) && measureScheduledIds.has(j.lp_job_id)) return false
+        if (INSTALL_STATUSES.includes(j.lp_status) && installScheduledIds.has(j.lp_job_id)) return false
+        return true
+      }
+      return false
+    })
     return acc
   }, {} as Record<string, Job[]>)
 
@@ -658,7 +705,13 @@ export default function CalendarPage() {
         <div style={{ width: 260, borderLeft: '1px solid #e0e0de', overflowY: 'auto', background: '#f9f9f8', display: 'flex', flexDirection: 'column' }}>
           {/* Header */}
           <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid #e0e0de', flexShrink: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a1a', marginBottom: 8 }}>Jobs</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a1a' }}>Jobs</div>
+            <button onClick={handleGCalSync} disabled={syncing} title="Sync from Google Calendar"
+              style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: '1px solid #ccc', background: syncing ? '#f0f0ee' : '#fff', color: syncing ? '#aaa' : '#036A43', cursor: syncing ? 'not-allowed' : 'pointer', fontWeight: 500 }}>
+              {syncing ? '↻ Syncing…' : '↻ Sync GCal'}
+            </button>
+          </div>
             {/* Search input */}
             <div style={{ position: 'relative' }}>
               <input
@@ -836,9 +889,9 @@ export default function CalendarPage() {
               {(formType === 'install' || formType === 'service') && (
                 <div>
                   <label style={labelStyle}>Crew</label>
-                  <select value={formCrew} onChange={e => setFormCrew(e.target.value)} style={{ ...inputStyle(), background: '#fff' }}>
+                  <select value={formInstaller} onChange={e => setFormInstaller(e.target.value)} style={{ ...inputStyle(), background: '#fff' }}>
                     <option value="">Select crew...</option>
-                    {CREWS.map(c => <option key={c} value={c}>{c}</option>)}
+                    {installers.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               )}
@@ -1024,9 +1077,9 @@ export default function CalendarPage() {
                 {(formType === 'install' || formType === 'service') && (
                   <div>
                     <label style={labelStyle}>Crew</label>
-                    <select value={formCrew} onChange={e => setFormCrew(e.target.value)} style={{ ...inputStyle(12), background: '#fff' }}>
+                    <select value={formInstaller} onChange={e => setFormInstaller(e.target.value)} style={{ ...inputStyle(12), background: '#fff' }}>
                       <option value="">Select crew...</option>
-                      {CREWS.map(c => <option key={c} value={c}>{c}</option>)}
+                      {installers.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                 )}
@@ -1062,6 +1115,35 @@ export default function CalendarPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* ─── Delete Confirmation ─── */}
+      {deleteConfirm && popup.event && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 10, width: 360, maxWidth: '90vw', boxShadow: '0 8px 32px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #eee' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>Delete Event</div>
+            </div>
+            <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 13, color: '#444' }}>
+                Delete <strong>{popup.event.title}</strong>?
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                <button onClick={() => confirmDelete(false)} disabled={deleting}
+                  style={{ fontSize: 12, padding: '9px 14px', borderRadius: 6, border: '1px solid #f5c2c2', background: '#fff5f5', color: '#A32D2D', cursor: 'pointer', textAlign: 'left', fontWeight: 500 }}>
+                  🗑 Delete from app only
+                </button>
+                <button onClick={() => confirmDelete(true)} disabled={deleting}
+                  style={{ fontSize: 12, padding: '9px 14px', borderRadius: 6, border: '1px solid #f5c2c2', background: '#A32D2D', color: '#fff', cursor: 'pointer', textAlign: 'left', fontWeight: 500 }}>
+                  🗑 Delete from app + Google Calendar
+                </button>
+                <button onClick={() => setDeleteConfirm(false)}
+                  style={{ fontSize: 12, padding: '9px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
