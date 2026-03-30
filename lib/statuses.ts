@@ -9,6 +9,7 @@ export const STATUS_LABELS: Record<string, string> = {
   '2': 'Materials Ordered',
   NS: 'Need to Schedule',
   S:  'Scheduled',
+  S:  'Scheduled',
   '5': 'In Progress',
   T:  'Installed & Unpaid',
   SI: 'Need Subcontractor Invoice',
@@ -22,6 +23,7 @@ export const TAB_LABELS: Record<string, string> = {
   D:  'Waiting HOA',
   '2': 'Materials Ordered',
   NS: 'Need to Schedule',
+  S:  'Scheduled',
   '5': 'In Progress',
   T:  'Installed & Unpaid',
 }
