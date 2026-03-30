@@ -149,6 +149,10 @@ export default function JobDetail() {
   const [modal, setModal] = useState<'measure' | 'install' | null>(null)
   const [uploading, setUploading] = useState<string | false>(false)
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false)
+  const [sheetEditMode, setSheetEditMode] = useState(false)
+  const [sheetInput, setSheetInput] = useState('')
+  const [sheetSaving, setSheetSaving] = useState(false)
+  const [sheetError, setSheetError] = useState('')
   const [uploadResult, setUploadResult] = useState<any>(null)
   const [uploadError, setUploadError] = useState('')
 
@@ -226,6 +230,31 @@ export default function JobDetail() {
     </div>
   )
 
+  const handleSaveMeasureSheet = async () => {
+    if (!sheetInput.trim()) return
+    setSheetSaving(true)
+    setSheetError('')
+    try {
+      const res = await fetch(`${API_URL}/api/jobs/${job.lp_job_id}/measure-sheet`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ measure_sheet_url: sheetInput.trim() }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Save failed')
+      }
+      const updated = await res.json()
+      setJob((prev: any) => ({ ...prev, measure_sheet_url: updated.measure_sheet_url }))
+      setSheetEditMode(false)
+      setSheetInput('')
+    } catch (err: any) {
+      setSheetError(err.message)
+    } finally {
+      setSheetSaving(false)
+    }
+  }
+
   const d = job.raw_lp_data || {}
   const installers = [d.installer1, d.installer2, d.installer3, d.installer4].filter(Boolean)
   const payments = d.payments || []
@@ -275,11 +304,41 @@ export default function JobDetail() {
           </select>
           {statusUpdating && <span style={{ fontSize: 11, color: '#aaa' }}>Saving...</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-            {job.measure_sheet_url && (
-              <a href={job.measure_sheet_url} target="_blank" rel="noreferrer"
-                style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #b6dfc9', background: '#f0faf5', color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>
-                📋 Measure Sheet
-              </a>
+            {sheetEditMode ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  autoFocus
+                  value={sheetInput}
+                  onChange={e => setSheetInput(e.target.value)}
+                  placeholder="Paste Google Sheets URL…"
+                  onKeyDown={e => { if (e.key === 'Enter') handleSaveMeasureSheet(); if (e.key === 'Escape') { setSheetEditMode(false); setSheetError('') } }}
+                  style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, border: `1px solid ${sheetError ? '#f5c2c2' : '#b6dfc9'}`, outline: 'none', width: 280 }}
+                />
+                <button onClick={handleSaveMeasureSheet} disabled={sheetSaving || !sheetInput.trim()}
+                  style={{ fontSize: 12, padding: '5px 10px', borderRadius: 6, border: 'none', background: sheetSaving ? '#aaa' : '#036A43', color: '#fff', cursor: 'pointer', fontWeight: 500 }}>
+                  {sheetSaving ? '…' : 'Save'}
+                </button>
+                <button onClick={() => { setSheetEditMode(false); setSheetError('') }}
+                  style={{ fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>
+                  Cancel
+                </button>
+                {sheetError && <span style={{ fontSize: 11, color: '#A32D2D' }}>{sheetError}</span>}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                {job.measure_sheet_url ? (
+                  <a href={job.measure_sheet_url} target="_blank" rel="noreferrer"
+                    style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #b6dfc9', background: '#f0faf5', color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>
+                    📋 Measure Sheet
+                  </a>
+                ) : (
+                  <span style={{ fontSize: 12, color: '#aaa' }}>No measure sheet</span>
+                )}
+                <button onClick={() => { setSheetInput(job.measure_sheet_url || ''); setSheetEditMode(true) }}
+                  style={{ fontSize: 11, padding: '4px 8px', borderRadius: 5, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>
+                  ✏️
+                </button>
+              </div>
             )}
             <button onClick={() => setModal('measure')} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: 'pointer', fontWeight: 500 }}>📐 Schedule Measure</button>
             <button onClick={() => setModal('install')} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: 'pointer', fontWeight: 500 }}>🔨 Schedule Install</button>
