@@ -10,17 +10,33 @@ import Sidebar from '@/components/Sidebar'
 const API = process.env.NEXT_PUBLIC_API_URL || 'https://rosenello-production-production.up.railway.app'
 
 const COLOR_MAP: Record<string, string> = {
-  measure: '#F6BF26',
-  install: '#F4511E',
-  service: '#039BE5',
-  reminder: '#616161',
+  measure:   '#F6C026',
+  install:   '#F4511E',
+  service:   '#039BE5',
+  reminder:  '#616161',
+  completed: '#0B8043',
+  other:     '#616161',
+}
+
+const GCAL_COLOR_HEX: Record<string, string> = {
+  '1': '#7986CB', '2': '#33B679', '3': '#8E24AA',  '4': '#E67C73',
+  '5': '#F6C026', '6': '#F4511E', '7': '#039BE5',  '8': '#616161',
+  '9': '#3F51B5', '10': '#0B8043', '11': '#D50000',
+}
+
+const GCAL_COLOR_LABELS: Record<string, string> = {
+  '5': 'Measure', '6': 'Install', '7': 'Service', '8': 'Reminder',
+  '10': 'Completed', '2': 'Sage', '1': 'Lavender', '3': 'Grape',
+  '4': 'Flamingo', '9': 'Blueberry',
 }
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
-  measure: 'Measure',
-  install: 'Install',
-  service: 'Service',
-  reminder: 'Reminder',
+  measure:   'Measure',
+  install:   'Install',
+  service:   'Service',
+  reminder:  'Reminder',
+  completed: 'Completed',
+  other:     'Other',
 }
 
 const SIDEBAR_STATUSES = ['SN', 'PU', 'SS', 'NS']
@@ -141,6 +157,7 @@ export default function CalendarPage() {
   const [formNotes, setFormNotes] = useState('')
   const [formStart, setFormStart] = useState('')
   const [formEnd, setFormEnd] = useState('')
+  const [formColorId, setFormColorId] = useState('6')
 
   const fetchAvailability = useCallback(async (start: string, end: string) => {
     try {
@@ -307,6 +324,7 @@ export default function CalendarPage() {
   const openModal = (startTime: string, endTime: string, job: Job | null = null) => {
     setFormTitle(job ? `${job.customer_last}, ${job.customer_first}` : '')
     setFormType('measure')
+    setFormColorId('5')
     setFormInstallers([])
     setFormNotes('')
     setFormStart(startTime)
@@ -339,6 +357,7 @@ export default function CalendarPage() {
     const rect = info.el.getBoundingClientRect()
     setFormTitle(ev.title || '')
     setFormType(ev.event_type)
+    setFormColorId(ev.color_id || '6')
     setFormInstallers(ev.installers || (ev.installer ? [ev.installer] : []))
     setFormNotes(ev.notes || '')
     setFormStart(ev.start_time)
@@ -502,7 +521,7 @@ export default function CalendarPage() {
           start_time: formStart,
           end_time: formEnd,
           notes: formNotes || null,
-          color_id: formType === 'measure' ? '5' : '6',
+          color_id: formColorId,
         }),
       })
       if (!res.ok) throw new Error('Edit failed')
@@ -585,9 +604,9 @@ export default function CalendarPage() {
       start: e.start_time,
       end: e.end_time,
       allDay: e.all_day,
-      backgroundColor: COLOR_MAP[e.event_type] || '#616161',
-      borderColor: COLOR_MAP[e.event_type] || '#616161',
-      textColor: e.event_type === 'measure' ? '#1a1a1a' : '#ffffff',
+      backgroundColor: (e.color_id && GCAL_COLOR_HEX[e.color_id]) || COLOR_MAP[e.event_type] || '#616161',
+      borderColor: (e.color_id && GCAL_COLOR_HEX[e.color_id]) || COLOR_MAP[e.event_type] || '#616161',
+      textColor: e.color_id === '5' || e.event_type === 'measure' ? '#1a1a1a' : '#ffffff',
     }))
 
   const MEASURE_STATUSES = ['N', 'SN', 'PU', 'SS']
@@ -914,14 +933,20 @@ export default function CalendarPage() {
                   style={inputStyle()} />
               </div>
               <div>
-                <label style={labelStyle}>Event Type</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {Object.entries(EVENT_TYPE_LABELS).map(([val, label]) => (
-                    <button key={val} onClick={() => setFormType(val)}
-                      style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: '2px solid', borderColor: formType === val ? COLOR_MAP[val] : '#ddd', background: formType === val ? COLOR_MAP[val] : '#fff', color: formType === val ? (val === 'measure' ? '#1a1a1a' : '#fff') : '#555', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
-                      {label}
-                    </button>
-                  ))}
+                <label style={labelStyle}>Color / Type</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 4 }}>
+                  {Object.entries(GCAL_COLOR_LABELS).map(([cid, clabel]) => {
+                    const hex = GCAL_COLOR_HEX[cid]
+                    const sel = formColorId === cid
+                    return (
+                      <button key={cid} onClick={() => { setFormColorId(cid); setFormType(cid==='5'?'measure':cid==='6'?'install':cid==='7'?'service':cid==='8'?'reminder':cid==='10'||cid==='2'?'completed':'other') }}
+                        title={clabel}
+                        style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px', borderRadius:6, border:'2px solid '+(sel?hex:'#ddd'), background:sel?hex+'22':'#fff', cursor:'pointer', fontSize:12, fontWeight:sel?600:400, color:sel?hex:'#555' }}>
+                        <span style={{ width:12, height:12, borderRadius:'50%', background:hex, display:'inline-block', flexShrink:0 }} />
+                        {clabel}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -934,7 +959,7 @@ export default function CalendarPage() {
                   <input type="datetime-local" value={formEnd.slice(0, 16)} onChange={e => setFormEnd(e.target.value)} style={inputStyle()} />
                 </div>
               </div>
-              {(formType === 'install' || formType === 'service' || formType === 'measure') && (
+              {(formType !== 'reminder' && formType !== 'availability' && formType !== 'other') && (
                 <div>
                   <label style={labelStyle}>Crew</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
@@ -1069,7 +1094,7 @@ export default function CalendarPage() {
         }}>
           <div onMouseDown={handlePopupMouseDown}
             style={{ padding: '12px 14px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', gap: 10, cursor: 'grab', flexShrink: 0, userSelect: 'none' }}>
-            <div style={{ width: 14, height: 14, borderRadius: '50%', background: COLOR_MAP[popup.event.event_type], flexShrink: 0 }} />
+            <div style={{ width: 14, height: 14, borderRadius: '50%', background: (popup.event.color_id && GCAL_COLOR_HEX[popup.event.color_id]) || COLOR_MAP[popup.event.event_type] || '#616161', flexShrink: 0 }} />
             <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{popup.event.title}</div>
             <button onClick={() => { setPopup({ open: false, event: null, x: 0, y: 0 }); setEditMode(false) }}
               style={{ border: 'none', background: 'none', fontSize: 18, color: '#aaa', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button>
@@ -1107,14 +1132,20 @@ export default function CalendarPage() {
                   <input value={formTitle} onChange={e => setFormTitle(e.target.value)} style={inputStyle(12)} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Event Type</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {Object.entries(EVENT_TYPE_LABELS).map(([val, label]) => (
-                      <button key={val} onClick={() => setFormType(val)}
-                        style={{ flex: 1, padding: '5px 0', borderRadius: 6, border: '2px solid', borderColor: formType === val ? COLOR_MAP[val] : '#ddd', background: formType === val ? COLOR_MAP[val] : '#fff', color: formType === val ? (val === 'measure' ? '#1a1a1a' : '#fff') : '#555', fontWeight: 600, fontSize: 11, cursor: 'pointer' }}>
-                        {label}
-                      </button>
-                    ))}
+                  <label style={labelStyle}>Color / Type</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                    {Object.entries(GCAL_COLOR_LABELS).map(([cid, clabel]) => {
+                      const hex = GCAL_COLOR_HEX[cid]
+                      const sel = formColorId === cid
+                      return (
+                        <button key={cid} onClick={() => { setFormColorId(cid); setFormType(cid==='5'?'measure':cid==='6'?'install':cid==='7'?'service':cid==='8'?'reminder':cid==='10'||cid==='2'?'completed':'other') }}
+                          title={clabel}
+                          style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 8px', borderRadius:6, border:'2px solid '+(sel?hex:'#ddd'), background:sel?hex+'22':'#fff', cursor:'pointer', fontSize:11, fontWeight:sel?600:400, color:sel?hex:'#555' }}>
+                          <span style={{ width:10, height:10, borderRadius:'50%', background:hex, display:'inline-block', flexShrink:0 }} />
+                          {clabel}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1127,7 +1158,7 @@ export default function CalendarPage() {
                     <input type="datetime-local" value={formEnd.slice(0, 16)} onChange={e => setFormEnd(e.target.value)} style={inputStyle(12)} />
                   </div>
                 </div>
-                {(formType === 'install' || formType === 'service' || formType === 'measure') && (
+                {(formType !== 'reminder' && formType !== 'availability' && formType !== 'other') && (
                   <div>
                     <label style={labelStyle}>Crew</label>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 2 }}>
