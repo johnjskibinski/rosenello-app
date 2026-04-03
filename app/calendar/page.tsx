@@ -150,6 +150,7 @@ export default function CalendarPage() {
   const [installers, setInstallers] = useState<string[]>(DEFAULT_CREWS)
   const [installerObjects, setInstallerObjects] = useState<{name: string, initials: string}[]>([])
   const [syncing, setSyncing] = useState(false)
+  const [suggestions, setSuggestions] = useState<Record<number, {first_choice: string | null, second_choice: string | null}>>({}) 
 
   const [formTitle, setFormTitle] = useState('')
   const [formType, setFormType] = useState('measure')
@@ -231,6 +232,18 @@ export default function CalendarPage() {
     } catch {}
   }, [])
 
+  const fetchSuggestions = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/jobs/installer-suggestions`)
+      const data = await res.json()
+      if (Array.isArray(data)) {
+        const map: Record<number, {first_choice: string | null, second_choice: string | null}> = {}
+        data.forEach((s: any) => { map[s.lp_job_id] = { first_choice: s.first_choice, second_choice: s.second_choice } })
+        setSuggestions(map)
+      }
+    } catch {}
+  }, [])
+
   const handleGCalSync = async () => {
     setSyncing(true)
     try {
@@ -246,12 +259,13 @@ export default function CalendarPage() {
   useEffect(() => {
     fetchJobs()
     fetchInstallers()
+    fetchSuggestions()
     const now = new Date()
     const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
     const end = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString()
     fetchEvents(start, end)
     fetchAvailability(start, end)
-  }, [fetchEvents, fetchJobs, fetchAvailability, fetchInstallers])
+  }, [fetchEvents, fetchJobs, fetchAvailability, fetchInstallers, fetchSuggestions])
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value
@@ -593,13 +607,24 @@ export default function CalendarPage() {
       id: e.id,
       title: (() => {
         const instList = e.installers?.length ? e.installers : (e.installer ? [e.installer] : [])
-        if (instList.length === 0) return e.title?.replace(/^([^)]+)s*/, '') || e.title
-        const initials = instList.map(name => {
-          const found = installerObjects.find(o => o.name === name)
-          return found?.initials || name
-        }).join(', ')
         const base = e.title?.replace(/^([^)]+)s*/, '') || e.title
-        return `(${initials}) ${base}`
+        if (instList.length > 0) {
+          const initials = instList.map(name => {
+            const found = installerObjects.find(o => o.name === name)
+            return found?.initials || name
+          }).join(', ')
+          return `(${initials}) ${base}`
+        }
+        // No crew assigned — show suggestion with ★ if available
+        if (e.lp_job_id && suggestions[e.lp_job_id]?.first_choice) {
+          const sug = suggestions[e.lp_job_id]
+          const sugInitials = [sug.first_choice, sug.second_choice].filter(Boolean).map(name => {
+            const found = installerObjects.find(o => o.name === name)
+            return found?.initials || name
+          }).join('/')
+          return `(★${sugInitials}) ${base}`
+        }
+        return base
       })(),
       start: e.start_time,
       end: e.end_time,
@@ -961,6 +986,14 @@ export default function CalendarPage() {
               </div>
               {(formType !== 'reminder' && formType !== 'availability' && formType !== 'other') && (
                 <div>
+                  {modal.job && suggestions[modal.job.lp_job_id] && (suggestions[modal.job.lp_job_id].first_choice || suggestions[modal.job.lp_job_id].second_choice) && (
+                    <div style={{ fontSize: 11, background: '#fffbea', border: '1px solid #f4e087', borderRadius: 6, padding: '6px 10px', marginBottom: 8, color: '#854F0B' }}>
+                      💡 <span style={{ fontWeight: 600 }}>Suggested:</span>{' '}
+                      {suggestions[modal.job.lp_job_id].first_choice && <span>★ {suggestions[modal.job.lp_job_id].first_choice}</span>}
+                      {suggestions[modal.job.lp_job_id].first_choice && suggestions[modal.job.lp_job_id].second_choice && <span style={{ color: '#bbb', margin: '0 4px' }}>·</span>}
+                      {suggestions[modal.job.lp_job_id].second_choice && <span style={{ opacity: 0.8 }}>↺ {suggestions[modal.job.lp_job_id].second_choice}</span>}
+                    </div>
+                  )}
                   <label style={labelStyle}>Crew</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
                     {installers.map(name => {
