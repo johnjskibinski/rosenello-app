@@ -19,6 +19,14 @@ interface Job {
   lp_status: string
 }
 
+interface Installer {
+  id: string
+  name: string
+  initials: string
+  active: boolean
+  sort_order: number
+}
+
 function parseProjectId(input: string): string | null {
   const trimmed = input.trim()
   // Full URL: https://app.companycam.com/projects/12345678
@@ -40,6 +48,12 @@ export default function AdminPage() {
   const [errors, setErrors] = useState<Record<number, string>>({})
   const [backfilling, setBackfilling] = useState(false)
   const [backfillMsg, setBackfillMsg] = useState('')
+  const [installers, setInstallers] = useState<Installer[]>([])
+  const [installerLoading, setInstallerLoading] = useState(true)
+  const [newInstallerName, setNewInstallerName] = useState('')
+  const [newInstallerInitials, setNewInstallerInitials] = useState('')
+  const [addingInstaller, setAddingInstaller] = useState(false)
+  const [removingInstaller, setRemovingInstaller] = useState<string | null>(null)
 
   const fetchJobs = useCallback(async () => {
     setLoading(true)
@@ -54,7 +68,43 @@ export default function AdminPage() {
     }
   }, [])
 
-  useEffect(() => { fetchJobs() }, [fetchJobs])
+  const fetchInstallers = useCallback(async () => {
+    setInstallerLoading(true)
+    try {
+      const res = await fetch(`${API}/api/calendar/installers`)
+      const data = await res.json()
+      if (Array.isArray(data)) setInstallers(data)
+    } catch (err) { console.error(err) }
+    finally { setInstallerLoading(false) }
+  }, [])
+
+  const handleAddInstaller = async () => {
+    if (!newInstallerName.trim()) return
+    setAddingInstaller(true)
+    try {
+      const res = await fetch(`${API}/api/calendar/installers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newInstallerName.trim(), initials: newInstallerInitials.trim() }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      setNewInstallerName('')
+      setNewInstallerInitials('')
+      await fetchInstallers()
+    } catch (err) { console.error(err) }
+    finally { setAddingInstaller(false) }
+  }
+
+  const handleRemoveInstaller = async (id: string) => {
+    setRemovingInstaller(id)
+    try {
+      await fetch(`${API}/api/calendar/installers/${id}`, { method: 'DELETE' })
+      await fetchInstallers()
+    } catch (err) { console.error(err) }
+    finally { setRemovingInstaller(null) }
+  }
+
+  useEffect(() => { fetchJobs(); fetchInstallers() }, [fetchJobs, fetchInstallers])
 
   const twoMonthsAgo = new Date()
   twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2)
@@ -250,6 +300,67 @@ export default function AdminPage() {
                   {errors[job.lp_job_id] && (
                     <div style={{ gridColumn: '4', fontSize: 11, color: '#A32D2D', marginTop: -8 }}>{errors[job.lp_job_id]}</div>
                   )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Installer Manager */}
+        <div style={{ background: '#fff', border: '1px solid #e0e0de', borderRadius: 10, marginBottom: 20 }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #e0e0de' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a1a' }}>👷 Installer Manager</div>
+            <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>Manage crew names and initials used in calendar scheduling</div>
+          </div>
+
+          {/* Add installer */}
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid #e0e0de', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              value={newInstallerName}
+              onChange={e => setNewInstallerName(e.target.value)}
+              placeholder="Full name (e.g. Jay W)"
+              style={{ flex: 2, minWidth: 160, fontSize: 13, padding: '7px 10px', borderRadius: 6, border: '1px solid #ccc', outline: 'none' }}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddInstaller() }}
+            />
+            <input
+              value={newInstallerInitials}
+              onChange={e => setNewInstallerInitials(e.target.value)}
+              placeholder="Initials (e.g. JW)"
+              style={{ flex: 1, minWidth: 100, fontSize: 13, padding: '7px 10px', borderRadius: 6, border: '1px solid #ccc', outline: 'none' }}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddInstaller() }}
+            />
+            <button
+              onClick={handleAddInstaller}
+              disabled={addingInstaller || !newInstallerName.trim()}
+              style={{ fontSize: 12, padding: '7px 16px', borderRadius: 6, border: 'none', background: addingInstaller || !newInstallerName.trim() ? '#aaa' : '#036A43', color: '#fff', cursor: addingInstaller || !newInstallerName.trim() ? 'not-allowed' : 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}>
+              {addingInstaller ? 'Adding…' : '+ Add Installer'}
+            </button>
+          </div>
+
+          {/* Installer list */}
+          {installerLoading ? (
+            <div style={{ padding: 24, textAlign: 'center', color: '#888', fontSize: 13 }}>Loading…</div>
+          ) : installers.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', color: '#888', fontSize: 13 }}>No installers yet.</div>
+          ) : (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 80px', gap: 12, padding: '10px 20px', background: '#f9f9f8', borderBottom: '1px solid #e0e0de', fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <div>Name</div>
+                <div>Initials</div>
+                <div></div>
+              </div>
+              {installers.map(installer => (
+                <div key={installer.id} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 80px', gap: 12, padding: '11px 20px', borderBottom: '1px solid #f0f0ee', alignItems: 'center' }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: '#1a1a1a' }}>{installer.name}</div>
+                  <div style={{ fontSize: 12, color: '#888', fontFamily: 'monospace' }}>{installer.initials || '—'}</div>
+                  <div>
+                    <button
+                      onClick={() => handleRemoveInstaller(installer.id)}
+                      disabled={removingInstaller === installer.id}
+                      style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: '1px solid #f5c2c2', background: '#fff5f5', color: '#A32D2D', cursor: 'pointer' }}>
+                      {removingInstaller === installer.id ? '…' : 'Remove'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

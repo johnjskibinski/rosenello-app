@@ -10,17 +10,33 @@ import Sidebar from '@/components/Sidebar'
 const API = process.env.NEXT_PUBLIC_API_URL || 'https://rosenello-production-production.up.railway.app'
 
 const COLOR_MAP: Record<string, string> = {
-  measure: '#F6BF26',
-  install: '#F4511E',
-  service: '#039BE5',
-  reminder: '#616161',
+  measure:   '#F6C026',
+  install:   '#F4511E',
+  service:   '#039BE5',
+  reminder:  '#616161',
+  completed: '#0B8043',
+  other:     '#616161',
+}
+
+const GCAL_COLOR_HEX: Record<string, string> = {
+  '1': '#7986CB', '2': '#33B679', '3': '#8E24AA',  '4': '#E67C73',
+  '5': '#F6C026', '6': '#F4511E', '7': '#039BE5',  '8': '#616161',
+  '9': '#3F51B5', '10': '#0B8043', '11': '#D50000',
+}
+
+const GCAL_COLOR_LABELS: Record<string, string> = {
+  '5': 'Measure', '6': 'Install', '7': 'Service', '8': 'Reminder',
+  '10': 'Completed', '2': 'Sage', '1': 'Lavender', '3': 'Grape',
+  '4': 'Flamingo', '9': 'Blueberry',
 }
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
-  measure: 'Measure',
-  install: 'Install',
-  service: 'Service',
-  reminder: 'Reminder',
+  measure:   'Measure',
+  install:   'Install',
+  service:   'Service',
+  reminder:  'Reminder',
+  completed: 'Completed',
+  other:     'Other',
 }
 
 const SIDEBAR_STATUSES = ['SN', 'PU', 'SS', 'NS']
@@ -31,22 +47,23 @@ const SIDEBAR_STATUS_LABELS: Record<string, string> = {
   NS: 'Need to Schedule',
 }
 
-const CREWS = ['Jay W', 'Matt Burger', 'Mike', 'Joe', 'Scott', 'Ricardo', 'Mike K', 'Jeremiah Construction', 'Matus Construction', "Richy's Construction"]
+const DEFAULT_CREWS = ['Jay W', 'Matt Burger', 'Mike', 'Joe', 'Scott', 'Ricardo', 'Mike K', 'Manuel', 'STK', 'Antoine', 'Jeremiah Construction', 'Matus Construction', "Richy's Construction"]
 
 interface CalEvent {
   id: string
+  gcal_event_id: string | null
   lp_job_id: number | null
   event_type: string
-  crew: string | null
+  installer: string | null
+  installers: string[]
   title: string
-  description: string
+  notes: string | null
   location: string
   start_time: string
   end_time: string
-  color_id: string
-  companycam_url: string | null
-  measure_sheet_url: string | null
-  notes: string | null
+  color_id: string | null
+  linked: boolean
+  all_day: boolean
 }
 
 interface Job {
@@ -59,10 +76,20 @@ interface Job {
   state: string
   zip: string
   lp_status: string
+  lp_status_label: string | null
   product: string
   gross_amount: number
+  balance_due: number | null
+  installer_1: string | null
+  installer_2: string | null
+  contract_date: string | null
+  total_windows: number | null
+  total_doors: number | null
+  total_units: number | null
   measure_sheet_url: string | null
   companycam_url: string | null
+  work_order_rows: any[] | null
+  raw_lp_data: any
 }
 
 interface ModalState {
@@ -87,6 +114,12 @@ interface DupModalState {
   endTime: string
 }
 
+interface TooltipState {
+  job: Job | null
+  x: number
+  y: number
+}
+
 export default function CalendarPage() {
   const calendarRef = useRef<any>(null)
   const draggableRef = useRef<any>(null)
@@ -94,9 +127,18 @@ export default function CalendarPage() {
   const isDragging = useRef(false)
   const pendingDrop = useRef<any>(null)
   const dragStartPos = useRef({ mouseX: 0, mouseY: 0, popupX: 0, popupY: 0 })
+  const searchTimer = useRef<any>(null)
 
   const [events, setEvents] = useState<CalEvent[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
+  const [availability, setAvailability] = useState<Record<string, string>>({})
+  const [availEdit, setAvailEdit] = useState<{ date: string; value: string } | null>(null)
+  const [availSaving, setAvailSaving] = useState(false)
+  const [visibleDates, setVisibleDates] = useState<string[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<Job[]>([])
+  const [searching, setSearching] = useState(false)
+  const [tooltip, setTooltip] = useState<TooltipState>({ job: null, x: 0, y: 0 })
   const [modal, setModal] = useState<ModalState>({ open: false, startTime: '', endTime: '', job: null })
   const [popup, setPopup] = useState<PopupState>({ open: false, event: null, x: 0, y: 0 })
   const [dupModal, setDupModal] = useState<DupModalState>({ open: false, event: null, date: '', startTime: '', endTime: '' })
@@ -104,17 +146,61 @@ export default function CalendarPage() {
   const [deleting, setDeleting] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [installers, setInstallers] = useState<string[]>(DEFAULT_CREWS)
+  const [installerObjects, setInstallerObjects] = useState<{name: string, initials: string}[]>([])
+  const [syncing, setSyncing] = useState(false)
 
   const [formTitle, setFormTitle] = useState('')
   const [formType, setFormType] = useState('measure')
-  const [formCrew, setFormCrew] = useState('')
+  const [formInstallers, setFormInstallers] = useState<string[]>([])
   const [formNotes, setFormNotes] = useState('')
   const [formStart, setFormStart] = useState('')
   const [formEnd, setFormEnd] = useState('')
+  const [formColorId, setFormColorId] = useState('6')
+
+  const fetchAvailability = useCallback(async (start: string, end: string) => {
+    try {
+      const res = await fetch(`${API}/api/calendar/availability?start=${start}&end=${end}`)
+      const data = await res.json()
+      if (Array.isArray(data)) {
+        const map: Record<string, string> = {}
+        data.forEach((a: any) => { map[a.date] = a.notes })
+        setAvailability(map)
+      }
+    } catch (err) {
+      console.error('Failed to fetch availability', err)
+    }
+  }, [])
+
+  const saveAvailability = async (date: string, notes: string) => {
+    setAvailSaving(true)
+    try {
+      // Pass existing gcal_event_ids so backend can delete old GCal events before recreating
+      const existing = await fetch(`${API}/api/calendar/availability?start=${date}&end=${date}`)
+      const existingData = await existing.json()
+      const gcal_event_ids = existingData?.[0]?.gcal_event_ids || []
+      await fetch(`${API}/api/calendar/availability`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, notes, gcal_event_ids }),
+      })
+      setAvailability(prev => {
+        const next = { ...prev }
+        if (!notes.trim()) { delete next[date] } else { next[date] = notes.trim() }
+        return next
+      })
+      setAvailEdit(null)
+    } catch (err) {
+      console.error('Failed to save availability', err)
+    } finally {
+      setAvailSaving(false)
+    }
+  }
 
   const fetchEvents = useCallback(async (start: string, end: string) => {
     try {
-      const res = await fetch(`${API}/api/calendar/events?start=${start}&end=${end}`)
+      const res = await fetch(`${API}/api/calendar?start=${start}&end=${end}`)
       const data = await res.json()
       setEvents(Array.isArray(data) ? data : [])
     } catch (err) {
@@ -134,13 +220,61 @@ export default function CalendarPage() {
     }
   }, [])
 
+  const fetchInstallers = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/calendar/installers`)
+      const data = await res.json()
+      if (Array.isArray(data) && data.length > 0) {
+        setInstallers(data.map((i: any) => i.name))
+        setInstallerObjects(data.map((i: any) => ({ name: i.name, initials: i.initials || i.name })))
+      }
+    } catch {}
+  }, [])
+
+  const handleGCalSync = async () => {
+    setSyncing(true)
+    try {
+      await fetch(`${API}/api/calendar/sync`, { method: 'POST' })
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+      const end = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString()
+      await fetchEvents(start, end)
+    } catch (err) { console.error(err) }
+    finally { setSyncing(false) }
+  }
+
   useEffect(() => {
     fetchJobs()
+    fetchInstallers()
     const now = new Date()
     const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
     const end = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString()
     fetchEvents(start, end)
-  }, [fetchEvents, fetchJobs])
+    fetchAvailability(start, end)
+  }, [fetchEvents, fetchJobs, fetchAvailability, fetchInstallers])
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const q = e.target.value
+    setSearchQuery(q)
+    clearTimeout(searchTimer.current)
+    if (!q.trim()) {
+      setSearchResults([])
+      setSearching(false)
+      return
+    }
+    setSearching(true)
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API}/api/jobs/search?q=${encodeURIComponent(q.trim())}`)
+        const data = await res.json()
+        setSearchResults(Array.isArray(data) ? data : [])
+      } catch {
+        setSearchResults([])
+      } finally {
+        setSearching(false)
+      }
+    }, 350)
+  }
 
   useEffect(() => {
     if (!sidebarListRef.current) return
@@ -148,17 +282,17 @@ export default function CalendarPage() {
       itemSelector: '.job-card',
       eventData: (el) => {
         const jobId = el.getAttribute('data-job-id')
-        const job = jobs.find(j => String(j.lp_job_id) === jobId)
+        const job = [...jobs, ...searchResults].find(j => String(j.lp_job_id) === jobId)
         return {
           title: job ? `${job.customer_last}, ${job.customer_first}` : 'New Event',
-          duration: '02:00',
+          duration: '01:00',
           extendedProps: { jobId },
         }
       },
     })
     draggableRef.current = draggable
     return () => draggable.destroy()
-  }, [jobs])
+  }, [jobs, searchResults])
 
   // Popup drag support
   const handlePopupMouseDown = (e: React.MouseEvent) => {
@@ -190,20 +324,29 @@ export default function CalendarPage() {
   const openModal = (startTime: string, endTime: string, job: Job | null = null) => {
     setFormTitle(job ? `${job.customer_last}, ${job.customer_first}` : '')
     setFormType('measure')
-    setFormCrew('')
+    setFormColorId('5')
+    setFormInstallers([])
     setFormNotes('')
     setFormStart(startTime)
     setFormEnd(endTime)
     setModal({ open: true, startTime, endTime, job })
   }
 
-  const handleDateSelect = (info: any) => { openModal(info.startStr, info.endStr) }
+  const handleDateSelect = (info: any) => {
+    if (info.allDay) {
+      // Clicking the all-day row opens availability editor for that date
+      const date = info.startStr.slice(0, 10)
+      setAvailEdit({ date, value: availability[date] || '' })
+      return
+    }
+    openModal(info.startStr, info.endStr)
+  }
 
   const handleExternalDrop = (info: any) => {
     const jobId = info.draggedEl.getAttribute('data-job-id')
-    const job = jobs.find(j => String(j.lp_job_id) === jobId) || null
+    const job = [...jobs, ...searchResults].find(j => String(j.lp_job_id) === jobId) || null
     const start = info.date.toISOString()
-    const end = new Date(info.date.getTime() + 2 * 60 * 60 * 1000).toISOString()
+    const end = new Date(info.date.getTime() + 1 * 60 * 60 * 1000).toISOString()
     pendingDrop.current = info
     openModal(start, end, job)
   }
@@ -214,7 +357,8 @@ export default function CalendarPage() {
     const rect = info.el.getBoundingClientRect()
     setFormTitle(ev.title || '')
     setFormType(ev.event_type)
-    setFormCrew(ev.crew || '')
+    setFormColorId(ev.color_id || '6')
+    setFormInstallers(ev.installers || (ev.installer ? [ev.installer] : []))
     setFormNotes(ev.notes || '')
     setFormStart(ev.start_time)
     setFormEnd(ev.end_time)
@@ -271,7 +415,8 @@ export default function CalendarPage() {
         body: JSON.stringify({
           lp_job_id: modal.job?.lp_job_id || null,
           event_type: formType,
-          crew: formCrew || null,
+          installer: formInstallers[0] || null,
+          installers: formInstallers,
           title: formTitle || null,
           start_time: formStart,
           end_time: formEnd,
@@ -290,13 +435,19 @@ export default function CalendarPage() {
     }
   }
 
-  const handleDeleteEvent = async () => {
+  const handleDeleteEvent = () => {
+    if (!popup.event) return
+    setDeleteConfirm(true)
+  }
+
+  const confirmDelete = async (includeGCal: boolean) => {
     if (!popup.event) return
     setDeleting(true)
     try {
-      await fetch(`${API}/api/calendar/events/${popup.event.id}`, { method: 'DELETE' })
+      await fetch(`${API}/api/calendar/events/${popup.event.id}?gcal=${includeGCal}`, { method: 'DELETE' })
       setEvents(prev => prev.filter(e => e.id !== popup.event!.id))
       setPopup({ open: false, event: null, x: 0, y: 0 })
+      setDeleteConfirm(false)
     } catch (err) {
       console.error(err)
     } finally {
@@ -333,9 +484,9 @@ export default function CalendarPage() {
         body: JSON.stringify({
           lp_job_id: ev.lp_job_id,
           event_type: ev.event_type,
-          crew: ev.crew,
+          installer: ev.installer,
+          installers: ev.installers || [],
           title: ev.title,
-          description: ev.description,
           location: ev.location,
           start_time: newStart,
           end_time: newEnd,
@@ -365,11 +516,12 @@ export default function CalendarPage() {
         body: JSON.stringify({
           title: formTitle || null,
           event_type: formType,
-          crew: formCrew || null,
+          installer: formInstallers[0] || null,
+            installers: formInstallers,
           start_time: formStart,
           end_time: formEnd,
           notes: formNotes || null,
-          color_id: formType === 'measure' ? '5' : formType === 'install' ? '6' : formType === 'service' ? '7' : '8',
+          color_id: formColorId,
         }),
       })
       if (!res.ok) throw new Error('Edit failed')
@@ -384,28 +536,90 @@ export default function CalendarPage() {
     }
   }
 
-  // Strip URL/link lines from description — shown as dedicated links below
   const cleanDescription = (desc: string | null) => {
     if (!desc) return ''
     return desc
       .split('\n')
-      .filter(line => !line.includes('http') && !line.includes('Measure Packet') && !line.includes('CompanyCam'))
+      .filter(line => !line.includes('http') && !line.includes('Measure Packet') && !line.includes('CompanyCam') && !line.includes('Phone:'))
       .join('\n')
       .trim()
   }
 
-  const fcEvents = events.map(e => ({
-    id: e.id,
-    title: e.title,
-    start: e.start_time,
-    end: e.end_time,
-    backgroundColor: COLOR_MAP[e.event_type] || '#616161',
-    borderColor: COLOR_MAP[e.event_type] || '#616161',
-    textColor: e.event_type === 'measure' ? '#1a1a1a' : '#ffffff',
-  }))
+  const unwrapGoogleUrl = (url: string): string => {
+    try {
+      if (url.includes('google.com/url')) {
+        const u = new URL(url)
+        return u.searchParams.get('q') || url
+      }
+    } catch {}
+    return url
+  }
 
+  const extractLinks = (desc: string | null): { measureUrl: string | null; companycamUrl: string | null; phone: string | null } => {
+    if (!desc) return { measureUrl: null, companycamUrl: null, phone: null }
+    const lines = desc.split('\n')
+    let measureUrl: string | null = null
+    let companycamUrl: string | null = null
+    let phone: string | null = null
+    for (const line of lines) {
+      const urlMatch = line.match(/<(https?:\/\/[^>]+)>/)
+      const rawUrl = urlMatch ? urlMatch[1] : (line.match(/https?:\/\/\S+/) || [])[0] || null
+      const url = rawUrl ? unwrapGoogleUrl(rawUrl) : null
+      if (url && (line.includes('Measure Packet') || url.includes('docs.google.com') || url.includes('drive.google.com'))) measureUrl = url
+      else if (url && (line.includes('CompanyCam') || url.includes('companycam.com'))) companycamUrl = url
+      const phoneMatch = line.match(/Phone:s*(.+)/)
+      if (phoneMatch) phone = phoneMatch[1].trim()
+    }
+    return { measureUrl, companycamUrl, phone }
+  }
+
+  const formatPhone = (raw: any): string => {
+    const p = raw?.phone1 || raw?.phone || ''
+    if (!p) return ''
+    const digits = String(p).replace(/\D/g, '')
+    if (digits.length === 10) return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`
+    if (digits.length === 11 && digits[0] === '1') return `(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`
+    return String(p)
+  }
+
+  // Jobs that already have a scheduled event — used to filter sidebar
+  const scheduledJobIds = new Set(events.filter(e => e.lp_job_id && e.event_type !== 'availability').map(e => e.lp_job_id))
+  const measureScheduledIds = new Set(events.filter(e => e.lp_job_id && e.event_type === 'measure').map(e => e.lp_job_id))
+  const installScheduledIds = new Set(events.filter(e => e.lp_job_id && e.event_type === 'install').map(e => e.lp_job_id))
+
+  const fcEvents = events
+    .filter(e => e.event_type !== 'availability')
+    .map(e => ({
+      id: e.id,
+      title: (() => {
+        const instList = e.installers?.length ? e.installers : (e.installer ? [e.installer] : [])
+        if (instList.length === 0) return e.title?.replace(/^([^)]+)s*/, '') || e.title
+        const initials = instList.map(name => {
+          const found = installerObjects.find(o => o.name === name)
+          return found?.initials || name
+        }).join(', ')
+        const base = e.title?.replace(/^([^)]+)s*/, '') || e.title
+        return `(${initials}) ${base}`
+      })(),
+      start: e.start_time,
+      end: e.end_time,
+      allDay: e.all_day,
+      backgroundColor: (e.color_id && GCAL_COLOR_HEX[e.color_id]) || COLOR_MAP[e.event_type] || '#616161',
+      borderColor: (e.color_id && GCAL_COLOR_HEX[e.color_id]) || COLOR_MAP[e.event_type] || '#616161',
+      textColor: e.color_id === '5' || e.event_type === 'measure' ? '#1a1a1a' : '#ffffff',
+    }))
+
+  const MEASURE_STATUSES = ['N', 'SN', 'PU', 'SS']
+  const INSTALL_STATUSES = ['2', 'NS']
   const groupedJobs = SIDEBAR_STATUSES.reduce((acc, status) => {
-    acc[status] = jobs.filter(j => j.lp_status === status)
+    acc[status] = jobs.filter(j => {
+      if (j.lp_status === status) {
+        if (MEASURE_STATUSES.includes(j.lp_status) && measureScheduledIds.has(j.lp_job_id)) return false
+        if (INSTALL_STATUSES.includes(j.lp_status) && installScheduledIds.has(j.lp_job_id)) return false
+        return true
+      }
+      return false
+    })
     return acc
   }, {} as Record<string, Job[]>)
 
@@ -415,68 +629,288 @@ export default function CalendarPage() {
   })
   const labelStyle: React.CSSProperties = { fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }
 
+  const isSearchActive = searchQuery.trim().length > 0
+  const displayList = isSearchActive ? searchResults : null
+
+  // Job card component (compact single-line)
+  const JobCard = ({ job }: { job: Job }) => {
+    const phone = formatPhone(job.raw_lp_data)
+    return (
+      <div
+        key={job.lp_job_id}
+        className="job-card"
+        data-job-id={String(job.lp_job_id)}
+        onMouseEnter={(e) => {
+          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+          setTooltip({ job, x: rect.left - 8, y: rect.top })
+        }}
+        onMouseLeave={() => setTooltip({ job: null, x: 0, y: 0 })}
+        style={{
+          background: '#fff',
+          border: '1px solid #e0e0de',
+          borderRadius: 6,
+          padding: '5px 8px',
+          cursor: 'grab',
+          marginBottom: 3,
+          fontSize: 12,
+          userSelect: 'none',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 6,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+        }}
+      >
+        <span style={{ fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>
+          {job.customer_last}, {job.customer_first}
+        </span>
+        <span style={{ color: '#888', fontSize: 11, flexShrink: 0 }}>
+          {job.city}, {job.state}
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <Sidebar />
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+          {/* Calendar — availability notes render as all-day events in the all-day row */}
+          <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px' }}>
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             initialView="timeGridWeek"
             headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' }}
             height="100%"
+            expandRows={false}
+            slotLaneDidMount={(arg) => {
+              arg.el.style.display = 'block'
+              arg.el.style.height = '17px'
+              arg.el.style.overflow = 'hidden'
+              const tr = arg.el.closest('tr') as HTMLElement | null
+              if (tr) { tr.style.display = 'block'; tr.style.height = '17px'; tr.style.position = 'relative' }
+            }}
+            slotLabelDidMount={(arg) => {
+              // Label spans 2 slots (1 hour) — position it to float left of the grid
+              arg.el.style.position = 'absolute'
+              arg.el.style.left = '0'
+              arg.el.style.top = '0'
+              arg.el.style.fontSize = '10px'
+              arg.el.style.lineHeight = '17px'
+              arg.el.style.color = '#555'
+              arg.el.style.padding = '0 4px'
+              arg.el.style.whiteSpace = 'nowrap'
+              arg.el.style.zIndex = '1'
+            }}
             editable={true}
             selectable={true}
             selectMirror={true}
             droppable={true}
-            events={fcEvents}
+            events={[
+              ...fcEvents,
+              // Each line of availability notes becomes its own all-day event block
+              ...Object.entries(availability).flatMap(([date, notes]) =>
+                notes.split('\n')
+                  .map(line => line.trim())
+                  .filter(Boolean)
+                  .map((line, i) => ({
+                    id: `avail-${date}-${i}`,
+                    title: line,
+                    start: date,
+                    allDay: true,
+                    backgroundColor: '#8B0000',
+                    borderColor: '#6B0000',
+                    textColor: '#fff',
+                    editable: false,
+                    classNames: ['fc-avail-event'],
+                    extendedProps: { isAvailability: true, availDate: date, availNotes: notes },
+                  }))
+              )
+            ]}
             select={handleDateSelect}
-            eventClick={handleEventClick}
+            eventClick={(info) => {
+              if (info.event.extendedProps?.isAvailability) {
+                const date = info.event.extendedProps.availDate
+                const notes = info.event.extendedProps.availNotes
+                setAvailEdit({ date, value: notes })
+                info.jsEvent.stopPropagation()
+                return
+              }
+              handleEventClick(info)
+            }}
             eventDrop={handleEventDrop}
             eventResize={handleEventResize}
             drop={handleExternalDrop}
-            slotMinTime="06:00:00"
-            slotMaxTime="22:00:00"
+            slotMinTime="00:00:00"
+            slotMaxTime="24:00:00"
+            slotDuration="00:30:00"
+            slotLabelInterval="01:00:00"
+            scrollTime="07:00:00"
             allDaySlot={true}
             nowIndicator={true}
-            datesSet={(info) => fetchEvents(info.startStr, info.endStr)}
+            datesSet={(info) => {
+              fetchEvents(info.startStr, info.endStr)
+              fetchAvailability(info.startStr, info.endStr)
+              const dates: string[] = []
+              const cur = new Date(info.start)
+              while (cur < info.end) {
+                dates.push(cur.toISOString().slice(0, 10))
+                cur.setDate(cur.getDate() + 1)
+              }
+              setVisibleDates(dates)
+            }}
           />
+          </div>
         </div>
 
         {/* Unscheduled Jobs Sidebar */}
-        <div style={{ width: 280, borderLeft: '1px solid #e0e0de', overflowY: 'auto', background: '#f9f9f8', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid #e0e0de', fontSize: 13, fontWeight: 700, color: '#1a1a1a' }}>
-            Unscheduled Jobs
+        <div style={{ width: 260, borderLeft: '1px solid #e0e0de', overflowY: 'auto', background: '#f9f9f8', display: 'flex', flexDirection: 'column' }}>
+          {/* Header */}
+          <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid #e0e0de', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a1a' }}>Jobs</div>
+            <button onClick={handleGCalSync} disabled={syncing} title="Sync from Google Calendar"
+              style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: '1px solid #ccc', background: syncing ? '#f0f0ee' : '#fff', color: syncing ? '#aaa' : '#036A43', cursor: syncing ? 'not-allowed' : 'pointer', fontWeight: 500 }}>
+              {syncing ? '↻ Syncing…' : '↻ Sync GCal'}
+            </button>
           </div>
-          <div ref={sidebarListRef} style={{ flex: 1, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {SIDEBAR_STATUSES.map(status => {
-              const group = groupedJobs[status] || []
-              if (!group.length) return null
-              return (
-                <div key={status}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '6px 2px 4px' }}>
-                    {SIDEBAR_STATUS_LABELS[status]} ({group.length})
+            {/* Search input */}
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                placeholder="Search all jobs…"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                style={{
+                  width: '100%', fontSize: 12, padding: '6px 28px 6px 8px',
+                  borderRadius: 6, border: '1px solid #ccc', outline: 'none',
+                  boxSizing: 'border-box', background: '#fff',
+                }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => { setSearchQuery(''); setSearchResults([]) }}
+                  style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', color: '#aaa', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}
+                >×</button>
+              )}
+            </div>
+          </div>
+
+          {/* List */}
+          <div ref={sidebarListRef} style={{ flex: 1, padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
+            {isSearchActive ? (
+              searching ? (
+                <div style={{ fontSize: 11, color: '#aaa', padding: '12px 4px' }}>Searching…</div>
+              ) : searchResults.length === 0 ? (
+                <div style={{ fontSize: 11, color: '#aaa', padding: '12px 4px' }}>No results found</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 2px 6px' }}>
+                    {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
                   </div>
-                  {group.map(job => (
-                    <div key={job.lp_job_id} className="job-card" data-job-id={String(job.lp_job_id)}
-                      style={{ background: '#fff', border: '1px solid #e0e0de', borderRadius: 8, padding: '8px 10px', cursor: 'grab', marginBottom: 4, fontSize: 12, userSelect: 'none' }}>
-                      <div style={{ fontWeight: 600, color: '#1a1a1a' }}>{job.customer_last}, {job.customer_first}</div>
-                      <div style={{ color: '#666', marginTop: 2 }}>{job.address}</div>
-                      <div style={{ color: '#888', marginTop: 2 }}>{job.city}, {job.state}</div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                        <span style={{ fontSize: 11, background: '#f0faf5', color: '#036A43', borderRadius: 4, padding: '1px 6px', fontWeight: 500 }}>{job.product || 'Win'}</span>
-                        <span style={{ fontSize: 11, color: '#036A43', fontWeight: 600 }}>${Number(job.gross_amount || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                  {searchResults.map(job => <JobCard key={job.lp_job_id} job={job} />)}
+                </>
               )
-            })}
+            ) : (
+              SIDEBAR_STATUSES.map(status => {
+                const group = groupedJobs[status] || []
+                if (!group.length) return null
+                return (
+                  <div key={status}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '6px 2px 4px' }}>
+                      {SIDEBAR_STATUS_LABELS[status]} ({group.length})
+                    </div>
+                    {group.map(job => <JobCard key={job.lp_job_id} job={job} />)}
+                  </div>
+                )
+              })
+            )}
           </div>
         </div>
       </div>
+
+      {/* ─── Hover Tooltip ─── */}
+      {tooltip.job && (
+        <div style={{
+          position: 'fixed',
+          left: Math.max(8, tooltip.x - 220),
+          top: Math.min(tooltip.y, window.innerHeight - 260),
+          width: 220,
+          background: '#fff',
+          border: '1px solid #e0e0de',
+          borderRadius: 8,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+          padding: '10px 12px',
+          zIndex: 500,
+          fontSize: 12,
+          pointerEvents: 'none',
+        }}>
+          <div style={{ fontWeight: 700, color: '#1a1a1a', marginBottom: 6, fontSize: 13 }}>
+            {tooltip.job.customer_last}, {tooltip.job.customer_first}
+          </div>
+          <div style={{ color: '#444', marginBottom: 2 }}>{tooltip.job.address}</div>
+          <div style={{ color: '#666', marginBottom: 6 }}>{tooltip.job.city}, {tooltip.job.state} {tooltip.job.zip}</div>
+          {formatPhone(tooltip.job.raw_lp_data) && (
+            <div style={{ color: '#036A43', marginBottom: 6, fontWeight: 500 }}>
+              📞 {formatPhone(tooltip.job.raw_lp_data)}
+            </div>
+          )}
+          <div style={{ borderTop: '1px solid #eee', paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {(tooltip.job.total_windows || tooltip.job.total_doors || tooltip.job.total_units) && (
+              <div style={{ color: '#555' }}>
+                {[
+                  tooltip.job.total_windows ? `${tooltip.job.total_windows} win` : null,
+                  tooltip.job.total_doors ? `${tooltip.job.total_doors} door${tooltip.job.total_doors !== 1 ? 's' : ''}` : null,
+                  tooltip.job.total_units ? `${tooltip.job.total_units} units total` : null,
+                ].filter(Boolean).join(' · ')}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#555' }}>Gross</span>
+              <span style={{ fontWeight: 600, color: '#1a1a1a' }}>${Number(tooltip.job.gross_amount || 0).toLocaleString()}</span>
+            </div>
+            {tooltip.job.balance_due != null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#555' }}>Balance</span>
+                <span style={{ fontWeight: 600, color: tooltip.job.balance_due > 0 ? '#A32D2D' : '#036A43' }}>
+                  ${Number(tooltip.job.balance_due).toLocaleString()}
+                </span>
+              </div>
+            )}
+            {(tooltip.job.installer_1 || tooltip.job.installer_2) && (
+              <div style={{ color: '#555' }}>
+                👷 {[tooltip.job.installer_1, tooltip.job.installer_2].filter(Boolean).join(', ')}
+              </div>
+            )}
+            {tooltip.job.contract_date && (
+              <div style={{ color: '#888', fontSize: 11 }}>
+                Signed {new Date(tooltip.job.contract_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </div>
+            )}
+            {tooltip.job.work_order_rows && tooltip.job.work_order_rows.length > 0 && (
+              <div style={{ borderTop: '1px solid #eee', paddingTop: 6, marginTop: 2 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Work Order</div>
+                {tooltip.job.work_order_rows.map((row: any, i: number) => (
+                  <div key={i} style={{ fontSize: 11, color: '#444', display: 'flex', justifyContent: 'space-between', gap: 6, lineHeight: 1.6 }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.description || row.item || row[0] || JSON.stringify(row)}</span>
+                    {(row.qty || row.quantity || row[1]) && <span style={{ color: '#888', flexShrink: 0 }}>×{row.qty || row.quantity || row[1]}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ borderTop: '1px solid #eee', paddingTop: 6, marginTop: 4, display: 'flex', gap: 8 }}>
+            {tooltip.job.measure_sheet_url && <span style={{ color: '#036A43', fontSize: 11 }}>📋 Packet</span>}
+            {tooltip.job.companycam_url && <span style={{ color: '#036A43', fontSize: 11 }}>📸 CCam</span>}
+            <span style={{ color: '#888', fontSize: 11, marginLeft: 'auto' }}>{tooltip.job.lp_status_label || tooltip.job.lp_status}</span>
+          </div>
+        </div>
+      )}
 
       {/* ─── Create Event Modal ─── */}
       {modal.open && (
@@ -499,14 +933,20 @@ export default function CalendarPage() {
                   style={inputStyle()} />
               </div>
               <div>
-                <label style={labelStyle}>Event Type</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {Object.entries(EVENT_TYPE_LABELS).map(([val, label]) => (
-                    <button key={val} onClick={() => setFormType(val)}
-                      style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: '2px solid', borderColor: formType === val ? COLOR_MAP[val] : '#ddd', background: formType === val ? COLOR_MAP[val] : '#fff', color: formType === val ? (val === 'measure' ? '#1a1a1a' : '#fff') : '#555', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
-                      {label}
-                    </button>
-                  ))}
+                <label style={labelStyle}>Color / Type</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 4 }}>
+                  {Object.entries(GCAL_COLOR_LABELS).map(([cid, clabel]) => {
+                    const hex = GCAL_COLOR_HEX[cid]
+                    const sel = formColorId === cid
+                    return (
+                      <button key={cid} onClick={() => { setFormColorId(cid); setFormType(cid==='5'?'measure':cid==='6'?'install':cid==='7'?'service':cid==='8'?'reminder':cid==='10'||cid==='2'?'completed':'other') }}
+                        title={clabel}
+                        style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px', borderRadius:6, border:'2px solid '+(sel?hex:'#ddd'), background:sel?hex+'22':'#fff', cursor:'pointer', fontSize:12, fontWeight:sel?600:400, color:sel?hex:'#555' }}>
+                        <span style={{ width:12, height:12, borderRadius:'50%', background:hex, display:'inline-block', flexShrink:0 }} />
+                        {clabel}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -519,13 +959,20 @@ export default function CalendarPage() {
                   <input type="datetime-local" value={formEnd.slice(0, 16)} onChange={e => setFormEnd(e.target.value)} style={inputStyle()} />
                 </div>
               </div>
-              {(formType === 'install' || formType === 'service') && (
+              {(formType !== 'reminder' && formType !== 'availability' && formType !== 'other') && (
                 <div>
                   <label style={labelStyle}>Crew</label>
-                  <select value={formCrew} onChange={e => setFormCrew(e.target.value)} style={{ ...inputStyle(), background: '#fff' }}>
-                    <option value="">Select crew...</option>
-                    {CREWS.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                    {installers.map(name => {
+                      const checked = formInstallers.includes(name)
+                      return (
+                        <label key={name} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '4px 8px', borderRadius: 5, border: `1px solid ${checked ? '#036A43' : '#ccc'}`, background: checked ? '#f0faf5' : '#fff', cursor: 'pointer', userSelect: 'none' }}>
+                          <input type="checkbox" checked={checked} onChange={() => setFormInstallers(prev => checked ? prev.filter(i => i !== name) : [...prev, name])} style={{ margin: 0 }} />
+                          {name}
+                        </label>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
               <div>
@@ -540,6 +987,56 @@ export default function CalendarPage() {
                   style={{ fontSize: 12, padding: '7px 16px', borderRadius: 6, border: 'none', background: saving ? '#aaa' : '#036A43', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500 }}>
                   {saving ? 'Saving…' : 'Save Event'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Availability Edit Modal ─── */}
+      {availEdit && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 10, width: 400, maxWidth: '90vw', boxShadow: '0 8px 32px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+            <div style={{ background: '#8B0000', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
+                Availability Note — {new Date(availEdit.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+              </div>
+              <button onClick={() => setAvailEdit(null)} style={{ border: 'none', background: 'none', color: 'rgba(255,255,255,0.8)', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <textarea
+                autoFocus
+                value={availEdit.value}
+                onChange={e => setAvailEdit({ ...availEdit, value: e.target.value })}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') setAvailEdit(null)
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveAvailability(availEdit.date, availEdit.value)
+                }}
+                placeholder={`e.g.\nRicardo off all day\nJay W available AM only\nMatt Burger out`}
+                rows={4}
+                style={{ width: '100%', fontSize: 12, padding: '8px 10px', borderRadius: 6, border: '1px solid #ccc', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', lineHeight: 1.6 }}
+              />
+              <div style={{ fontSize: 11, color: '#aaa' }}>Tip: Press Cmd+Enter to save, Escape to cancel</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                {availability[availEdit.date] && (
+                  <button
+                    onClick={() => saveAvailability(availEdit.date, '')}
+                    disabled={availSaving}
+                    style={{ fontSize: 12, padding: '7px 12px', borderRadius: 6, border: '1px solid #f5c2c2', background: '#fff5f5', color: '#A32D2D', cursor: 'pointer' }}
+                  >
+                    Clear
+                  </button>
+                )}
+                <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+                  <button onClick={() => setAvailEdit(null)} style={{ fontSize: 12, padding: '7px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>Cancel</button>
+                  <button
+                    onClick={() => saveAvailability(availEdit.date, availEdit.value)}
+                    disabled={availSaving}
+                    style={{ fontSize: 12, padding: '7px 16px', borderRadius: 6, border: 'none', background: availSaving ? '#aaa' : '#8B0000', color: '#fff', cursor: availSaving ? 'not-allowed' : 'pointer', fontWeight: 500 }}
+                  >
+                    {availSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -595,16 +1092,14 @@ export default function CalendarPage() {
           boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid #e0e0de',
           maxHeight: 'calc(100vh - 40px)', display: 'flex', flexDirection: 'column',
         }}>
-          {/* Drag handle header */}
           <div onMouseDown={handlePopupMouseDown}
             style={{ padding: '12px 14px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', gap: 10, cursor: 'grab', flexShrink: 0, userSelect: 'none' }}>
-            <div style={{ width: 14, height: 14, borderRadius: '50%', background: COLOR_MAP[popup.event.event_type], flexShrink: 0 }} />
+            <div style={{ width: 14, height: 14, borderRadius: '50%', background: (popup.event.color_id && GCAL_COLOR_HEX[popup.event.color_id]) || COLOR_MAP[popup.event.event_type] || '#616161', flexShrink: 0 }} />
             <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{popup.event.title}</div>
             <button onClick={() => { setPopup({ open: false, event: null, x: 0, y: 0 }); setEditMode(false) }}
               style={{ border: 'none', background: 'none', fontSize: 18, color: '#aaa', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button>
           </div>
 
-          {/* Scrollable body */}
           <div style={{ padding: '12px 14px', fontSize: 12, color: '#444', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
             <div style={{ color: '#666' }}>
               {new Date(popup.event.start_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
@@ -616,17 +1111,15 @@ export default function CalendarPage() {
                 style={{ color: '#036A43', textDecoration: 'none' }}>📍 {popup.event.location}</a>
             )}
             {(() => {
-              const cleaned = cleanDescription(popup.event.description)
-              return cleaned ? <div style={{ whiteSpace: 'pre-wrap', color: '#444', fontSize: 12, lineHeight: 1.5 }}>{cleaned}</div> : null
+              const cleaned = cleanDescription(popup.event.notes)
+              const { measureUrl, companycamUrl, phone } = extractLinks(popup.event.notes)
+              return <>
+                {phone && <div style={{ color: '#036A43', fontWeight: 500 }}>📞 {phone}</div>}
+                {cleaned ? <div style={{ whiteSpace: 'pre-wrap', color: '#444', fontSize: 12, lineHeight: 1.5 }}>{cleaned}</div> : null}
+                {measureUrl && <a href={measureUrl} target="_blank" rel="noreferrer" style={{ color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>📋 Measure Packet</a>}
+                {companycamUrl && <a href={companycamUrl} target="_blank" rel="noreferrer" style={{ color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>📸 CompanyCam</a>}
+              </>
             })()}
-            {popup.event.measure_sheet_url && (
-              <a href={popup.event.measure_sheet_url} target="_blank" rel="noreferrer"
-                style={{ color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>📋 Measure Packet</a>
-            )}
-            {popup.event.companycam_url && (
-              <a href={popup.event.companycam_url} target="_blank" rel="noreferrer"
-                style={{ color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>📸 CompanyCam</a>
-            )}
             {popup.event.lp_job_id && (
               <a href={`https://e5d8a.leadperfection.com/jobdetail.html?jobid=${popup.event.lp_job_id}`} target="_blank" rel="noreferrer"
                 style={{ color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>🔗 Open in LP</a>
@@ -639,14 +1132,20 @@ export default function CalendarPage() {
                   <input value={formTitle} onChange={e => setFormTitle(e.target.value)} style={inputStyle(12)} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Event Type</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {Object.entries(EVENT_TYPE_LABELS).map(([val, label]) => (
-                      <button key={val} onClick={() => setFormType(val)}
-                        style={{ flex: 1, padding: '5px 0', borderRadius: 6, border: '2px solid', borderColor: formType === val ? COLOR_MAP[val] : '#ddd', background: formType === val ? COLOR_MAP[val] : '#fff', color: formType === val ? (val === 'measure' ? '#1a1a1a' : '#fff') : '#555', fontWeight: 600, fontSize: 11, cursor: 'pointer' }}>
-                        {label}
-                      </button>
-                    ))}
+                  <label style={labelStyle}>Color / Type</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                    {Object.entries(GCAL_COLOR_LABELS).map(([cid, clabel]) => {
+                      const hex = GCAL_COLOR_HEX[cid]
+                      const sel = formColorId === cid
+                      return (
+                        <button key={cid} onClick={() => { setFormColorId(cid); setFormType(cid==='5'?'measure':cid==='6'?'install':cid==='7'?'service':cid==='8'?'reminder':cid==='10'||cid==='2'?'completed':'other') }}
+                          title={clabel}
+                          style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 8px', borderRadius:6, border:'2px solid '+(sel?hex:'#ddd'), background:sel?hex+'22':'#fff', cursor:'pointer', fontSize:11, fontWeight:sel?600:400, color:sel?hex:'#555' }}>
+                          <span style={{ width:10, height:10, borderRadius:'50%', background:hex, display:'inline-block', flexShrink:0 }} />
+                          {clabel}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -659,13 +1158,20 @@ export default function CalendarPage() {
                     <input type="datetime-local" value={formEnd.slice(0, 16)} onChange={e => setFormEnd(e.target.value)} style={inputStyle(12)} />
                   </div>
                 </div>
-                {(formType === 'install' || formType === 'service') && (
+                {(formType !== 'reminder' && formType !== 'availability' && formType !== 'other') && (
                   <div>
                     <label style={labelStyle}>Crew</label>
-                    <select value={formCrew} onChange={e => setFormCrew(e.target.value)} style={{ ...inputStyle(12), background: '#fff' }}>
-                      <option value="">Select crew...</option>
-                      {CREWS.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 2 }}>
+                      {installers.map(name => {
+                        const checked = formInstallers.includes(name)
+                        return (
+                          <label key={name} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '3px 7px', borderRadius: 5, border: `1px solid ${checked ? '#036A43' : '#ccc'}`, background: checked ? '#f0faf5' : '#fff', cursor: 'pointer', userSelect: 'none' }}>
+                            <input type="checkbox" checked={checked} onChange={() => setFormInstallers(prev => checked ? prev.filter(i => i !== name) : [...prev, name])} style={{ margin: 0 }} />
+                            {name}
+                          </label>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
                 <div>
@@ -700,6 +1206,35 @@ export default function CalendarPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* ─── Delete Confirmation ─── */}
+      {deleteConfirm && popup.event && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 10, width: 360, maxWidth: '90vw', boxShadow: '0 8px 32px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #eee' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>Delete Event</div>
+            </div>
+            <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 13, color: '#444' }}>
+                Delete <strong>{popup.event.title}</strong>?
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                <button onClick={() => confirmDelete(false)} disabled={deleting}
+                  style={{ fontSize: 12, padding: '9px 14px', borderRadius: 6, border: '1px solid #f5c2c2', background: '#fff5f5', color: '#A32D2D', cursor: 'pointer', textAlign: 'left', fontWeight: 500 }}>
+                  🗑 Delete from app only
+                </button>
+                <button onClick={() => confirmDelete(true)} disabled={deleting}
+                  style={{ fontSize: 12, padding: '9px 14px', borderRadius: 6, border: '1px solid #f5c2c2', background: '#A32D2D', color: '#fff', cursor: 'pointer', textAlign: 'left', fontWeight: 500 }}>
+                  🗑 Delete from app + Google Calendar
+                </button>
+                <button onClick={() => setDeleteConfirm(false)}
+                  style={{ fontSize: 12, padding: '9px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

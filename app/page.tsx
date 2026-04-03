@@ -18,6 +18,42 @@ function getProductColor(product: string) {
   return PRODUCT_COLORS[product] || { bg: '#f0f0ee', text: '#555' }
 }
 
+function weekdayHoursElapsed(since: Date): number {
+  const now = new Date()
+  if (since >= now) return 0
+  const totalMs = now.getTime() - since.getTime()
+  const totalHours = totalMs / 3600000
+  let weekendMs = 0
+  const cur = new Date(since)
+  cur.setHours(0, 0, 0, 0)
+  while (cur <= now) {
+    const day = cur.getDay()
+    if (day === 0 || day === 6) {
+      const ds = cur.getTime(), de = ds + 86400000
+      const cs = Math.max(ds, since.getTime()), ce = Math.min(de, now.getTime())
+      if (ce > cs) weekendMs += ce - cs
+    }
+    cur.setDate(cur.getDate() + 1)
+  }
+  return totalHours - weekendMs / 3600000
+}
+
+function businessDaysElapsed(since: Date): number {
+  const now = new Date()
+  if (since >= now) return 0
+  let days = 0
+  const cur = new Date(since)
+  cur.setHours(0, 0, 0, 0)
+  const end = new Date()
+  end.setHours(0, 0, 0, 0)
+  while (cur < end) {
+    const d = cur.getDay()
+    if (d !== 0 && d !== 6) days++
+    cur.setDate(cur.getDate() + 1)
+  }
+  return days
+}
+
 export default function ProductionBoard() {
   const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,6 +107,23 @@ export default function ProductionBoard() {
     acc[s] = activeJobs.filter(j => j.lp_status === s).length
     return acc
   }, {} as Record<string, number>)
+
+  const OVERDUE_SCHED = ['SN', 'PU', 'N']
+  const ORDERED_OR_BEYOND = ['2', 'NS', 'S', '5', 'T', 'SI', 'CM', 'U']
+  const sq = search.toLowerCase()
+  const matchesSq = (j: any) => !sq || ((j.customer_first + ' ' + j.customer_last).toLowerCase().includes(sq) || (j.address||'').toLowerCase().includes(sq) || (j.contract_id||'').toLowerCase().includes(sq))
+  const overdueToSchedule = activeTab === 'all' ? activeJobs.filter(j => {
+    if (!OVERDUE_SCHED.includes(j.lp_status)) return false
+    if (!j.status_entered_at) return false
+    if (!matchesSq(j)) return false
+    return weekdayHoursElapsed(new Date(j.status_entered_at)) >= 48
+  }) : []
+  const overdueToOrder = activeTab === 'all' ? activeJobs.filter(j => {
+    if (!j.measure_completed_at) return false
+    if (ORDERED_OR_BEYOND.includes(j.lp_status)) return false
+    if (!matchesSq(j)) return false
+    return businessDaysElapsed(new Date(j.measure_completed_at)) >= 5
+  }) : []
 
   const tabRow1 = ['SN', 'PU', 'SS', 'MR']
   const tabRow2 = ['D', '2', 'NS', '5', 'T']
@@ -163,7 +216,43 @@ export default function ProductionBoard() {
         </div>
 
         <div style={{ flex: 1, padding: '12px 20px', overflowY: 'auto' }}>
-          {Object.keys(grouped).length === 0 ? (
+          {overdueToSchedule.length > 0 && (
+            <div style={{ marginBottom: 5, borderRadius: 7, overflow: 'hidden', border: '1px solid #f5c6c6', background: '#fff' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderBottom: '1px solid #fde8e8', borderLeft: '3px solid #D93025', background: '#fff8f8' }}>
+                <span style={{ fontSize: 13 }}>⚠️</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#D93025' }}>Overdue to Schedule</span>
+                <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 99, fontWeight: 500, background: '#FCEBEB', color: '#A32D2D' }}>{overdueToSchedule.length}</span>
+                <span style={{ fontSize: 11, color: '#aaa', marginLeft: 'auto' }}>48+ business hours in Scope Needed or Scope/Pickup Check</span>
+              </div>
+              {overdueToSchedule.map(j => (
+                <a key={j.id} href={'/jobs/' + j.lp_job_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', borderBottom: '1px solid #fde8e8', textDecoration: 'none' }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: '#1a1a1a', flex: 1 }}>{j.customer_first} {j.customer_last}</span>
+                  <span style={{ fontSize: 11, color: '#666', flex: 2 }}>{j.address}{j.city ? ', ' + j.city : ''}</span>
+                  <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 99, fontWeight: 500, background: STATUS_BADGE_COLOR[j.lp_status] || '#f0f0ee', color: STATUS_BADGE_TEXT[j.lp_status] || '#555' }}>{STATUS_LABELS[j.lp_status] || j.lp_status}</span>
+                  <span style={{ fontSize: 11, color: '#D93025', fontWeight: 600, whiteSpace: 'nowrap', marginLeft: 8 }}>{Math.floor(weekdayHoursElapsed(new Date(j.status_entered_at)))}h overdue</span>
+                </a>
+              ))}
+            </div>
+          )}
+          {overdueToOrder.length > 0 && (
+            <div style={{ marginBottom: 5, borderRadius: 7, overflow: 'hidden', border: '1px solid #fdd9ad', background: '#fff' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderBottom: '1px solid #fde8c0', borderLeft: '3px solid #E07000', background: '#fffbf5' }}>
+                <span style={{ fontSize: 13 }}>⏰</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#E07000' }}>Overdue to Order</span>
+                <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 99, fontWeight: 500, background: '#FAEEDA', color: '#854F0B' }}>{overdueToOrder.length}</span>
+                <span style={{ fontSize: 11, color: '#aaa', marginLeft: 'auto' }}>5+ business days since measure — materials not yet ordered</span>
+              </div>
+              {overdueToOrder.map(j => (
+                <a key={j.id} href={'/jobs/' + j.lp_job_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', borderBottom: '1px solid #fde8c0', textDecoration: 'none' }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: '#1a1a1a', flex: 1 }}>{j.customer_first} {j.customer_last}</span>
+                  <span style={{ fontSize: 11, color: '#666', flex: 2 }}>{j.address}{j.city ? ', ' + j.city : ''}</span>
+                  <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 99, fontWeight: 500, background: STATUS_BADGE_COLOR[j.lp_status] || '#f0f0ee', color: STATUS_BADGE_TEXT[j.lp_status] || '#555' }}>{STATUS_LABELS[j.lp_status] || j.lp_status}</span>
+                  <span style={{ fontSize: 11, color: '#E07000', fontWeight: 600, whiteSpace: 'nowrap', marginLeft: 8 }}>{businessDaysElapsed(new Date(j.measure_completed_at))}d since measure</span>
+                </a>
+              ))}
+            </div>
+          )}
+          {Object.keys(grouped).length === 0 && overdueToSchedule.length === 0 && overdueToOrder.length === 0 ? (
             <div style={{ textAlign: 'center', color: '#aaa', fontSize: 13, marginTop: 40 }}>No jobs found</div>
           ) : (
             Object.entries(grouped).map(([status, statusJobs]) => (
