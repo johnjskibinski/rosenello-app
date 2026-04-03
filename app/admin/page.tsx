@@ -55,6 +55,10 @@ export default function AdminPage() {
   const [addingInstaller, setAddingInstaller] = useState(false)
   const [removingInstaller, setRemovingInstaller] = useState<string | null>(null)
   const [pushingSheet, setPushingSheet] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<any>(null)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<any>(null)
   const [sheetPushMsg, setSheetPushMsg] = useState('')
   const [sheetUrl, setSheetUrl] = useState('')
 
@@ -180,6 +184,36 @@ export default function AdminPage() {
       setBackfillMsg('Backfill request failed')
     } finally {
       setBackfilling(false)
+    }
+  }
+
+  const handleImportBacklog = async () => {
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const res = await fetch(`${API}/api/jobs/import-backlog-sheet`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Import failed')
+      setImportResult(data)
+    } catch (err: any) {
+      setImportResult({ error: err.message })
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const handleImportBacklog = async () => {
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const res = await fetch(`${API}/api/jobs/import-backlog-sheet`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Import failed')
+      setImportResult(data)
+    } catch (err: any) {
+      setImportResult({ error: err.message })
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -405,6 +439,18 @@ export default function AdminPage() {
                 </a>
               )}
               <button
+                onClick={handleImportBacklog}
+                disabled={importing}
+                style={{ fontSize: 12, padding: '7px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: importing ? 'not-allowed' : 'pointer', fontWeight: 500 }}>
+                {importing ? '⏳ Importing…' : '📥 Import from Backlog Sheet'}
+              </button>
+              <button
+                onClick={handleImportBacklog}
+                disabled={importing}
+                style={{ fontSize: 12, padding: '7px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#333', cursor: importing ? 'not-allowed' : 'pointer', fontWeight: 500 }}>
+                {importing ? '⏳ Importing…' : '📥 Import from Backlog Sheet'}
+              </button>
+              <button
                 onClick={handlePushSheet}
                 disabled={pushingSheet}
                 style={{ fontSize: 12, padding: '7px 14px', borderRadius: 6, border: 'none', background: pushingSheet ? '#aaa' : '#036A43', color: '#fff', cursor: pushingSheet ? 'not-allowed' : 'pointer', fontWeight: 500 }}>
@@ -416,6 +462,29 @@ export default function AdminPage() {
             Columns: Last Name · First Name · City · State · Job Status · Unit Count · Gross Amount · Job Type · Installer 1 · Installer 2 · Notes
             <div style={{ marginTop: 6, fontSize: 11, color: '#bbb' }}>All columns sortable. Update Sheet refreshes all rows — no duplicates.</div>
           </div>
+          {importResult && (
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #e0e0de', fontSize: 12 }}>
+              {importResult.error ? (
+                <span style={{ color: '#A32D2D' }}>✗ {importResult.error}</span>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ color: '#036A43', fontWeight: 600 }}>
+                    ✓ Import complete — {importResult.upserted} of {importResult.total} rows imported
+                  </div>
+                  {importResult.unmatched?.length > 0 && (
+                    <div style={{ color: '#854F0B' }}>
+                      ⚠ {importResult.unmatched.length} unmatched: {importResult.unmatched.join(', ')}
+                    </div>
+                  )}
+                  {importResult.errors?.length > 0 && (
+                    <div style={{ color: '#A32D2D' }}>
+                      ✗ Errors: {importResult.errors.join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
       </div>
