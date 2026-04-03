@@ -54,6 +54,9 @@ export default function AdminPage() {
   const [newInstallerInitials, setNewInstallerInitials] = useState('')
   const [addingInstaller, setAddingInstaller] = useState(false)
   const [removingInstaller, setRemovingInstaller] = useState<string | null>(null)
+  const [pushingSheet, setPushingSheet] = useState(false)
+  const [sheetPushMsg, setSheetPushMsg] = useState('')
+  const [sheetUrl, setSheetUrl] = useState('')
 
   const fetchJobs = useCallback(async () => {
     setLoading(true)
@@ -177,6 +180,22 @@ export default function AdminPage() {
       setBackfillMsg('Backfill request failed')
     } finally {
       setBackfilling(false)
+    }
+  }
+
+  const handlePushSheet = async () => {
+    setPushingSheet(true)
+    setSheetPushMsg('')
+    try {
+      const res = await fetch(`${API}/api/jobs/push-suggestions-sheet`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Push failed')
+      setSheetUrl(data.url || '')
+      setSheetPushMsg(`✓ Sheet updated — ${data.rows} row${data.rows !== 1 ? 's' : ''}`)
+    } catch (err: any) {
+      setSheetPushMsg(`✗ ${err.message}`)
+    } finally {
+      setPushingSheet(false)
     }
   }
 
@@ -365,6 +384,38 @@ export default function AdminPage() {
               ))}
             </div>
           )}
+        </div>
+
+
+        {/* Installer Suggestions Sheet */}
+        <div style={{ background: '#fff', border: '1px solid #e0e0de', borderRadius: 10, marginBottom: 20 }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #e0e0de', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a1a' }}>📊 Installer Suggestions Sheet</div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>Push all crew assignment suggestions to a sortable Google Sheet</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {sheetPushMsg && (
+                <span style={{ fontSize: 12, color: sheetPushMsg.startsWith('✓') ? '#036A43' : '#A32D2D' }}>{sheetPushMsg}</span>
+              )}
+              {sheetUrl && (
+                <a href={sheetUrl} target="_blank" rel="noreferrer"
+                  style={{ fontSize: 12, padding: '7px 14px', borderRadius: 6, border: '1px solid #b6dfc9', background: '#f0faf5', color: '#036A43', textDecoration: 'none', fontWeight: 500 }}>
+                  📋 Open Sheet
+                </a>
+              )}
+              <button
+                onClick={handlePushSheet}
+                disabled={pushingSheet}
+                style={{ fontSize: 12, padding: '7px 14px', borderRadius: 6, border: 'none', background: pushingSheet ? '#aaa' : '#036A43', color: '#fff', cursor: pushingSheet ? 'not-allowed' : 'pointer', fontWeight: 500 }}>
+                {pushingSheet ? '⏳ Updating…' : '🔄 Update Sheet'}
+              </button>
+            </div>
+          </div>
+          <div style={{ padding: '14px 20px', fontSize: 12, color: '#888' }}>
+            Columns: Last Name · First Name · City · State · Job Status · Unit Count · Gross Amount · Job Type · Installer 1 · Installer 2 · Notes
+            <div style={{ marginTop: 6, fontSize: 11, color: '#bbb' }}>All columns sortable. Update Sheet refreshes all rows — no duplicates.</div>
+          </div>
         </div>
 
       </div>

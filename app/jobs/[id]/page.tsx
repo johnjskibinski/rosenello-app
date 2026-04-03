@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import { STATUS_LABELS, STATUS_ORDER } from '@/lib/statuses'
 import NotesSection from './notes-section'
+import InstallerSuggestionSection from './installer-suggestion-section'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
 
@@ -507,6 +508,8 @@ export default function JobDetail() {
               </div>
             </div>
           )}
+
+          <InstallerSuggestionSection lpJobId={job.lp_job_id} />
 
           <NotesSection lpJobId={job.lp_job_id} />
 
