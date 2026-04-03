@@ -52,6 +52,10 @@ export default function AdminPage() {
   const [newInstallerInitials, setNewInstallerInitials] = useState('')
   const [addingInstaller, setAddingInstaller] = useState(false)
   const [removingInstaller, setRemovingInstaller] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [renameInputs, setRenameInputs] = useState<Record<string, { name: string; initials: string }>>({})
+  const [renameSaving, setRenameSaving] = useState<string | null>(null)
+  const [deleteWarning, setDeleteWarning] = useState<any>(null)
   const [pushingSheet, setPushingSheet] = useState(false)
   const [sheetPushMsg, setSheetPushMsg] = useState('')
   const [sheetUrl, setSheetUrl] = useState('')
@@ -98,13 +102,46 @@ export default function AdminPage() {
     finally { setAddingInstaller(false) }
   }
 
-  const handleRemoveInstaller = async (id: string) => {
+  const handleRemoveInstaller = async (id: string, name: string) => {
+    setRemovingInstaller(id)
+    setDeleteWarning(null)
+    try {
+      const res = await fetch(`${API}/api/calendar/installers/${id}`, { method: 'DELETE' })
+      if (res.status === 409) {
+        const data = await res.json()
+        setDeleteWarning({ id, name, affectedJobs: data.affectedJobs })
+      } else {
+        await fetchInstallers()
+      }
+    } catch (err) { console.error(err) }
+    finally { setRemovingInstaller(null) }
+  }
+
+  const handleForceRemove = async (id: string) => {
     setRemovingInstaller(id)
     try {
-      await fetch(`${API}/api/calendar/installers/${id}`, { method: 'DELETE' })
+      await fetch(`${API}/api/calendar/installers/${id}?force=true`, { method: 'DELETE' })
+      setDeleteWarning(null)
       await fetchInstallers()
     } catch (err) { console.error(err) }
     finally { setRemovingInstaller(null) }
+  }
+
+  const handleRenameInstaller = async (installer: Installer) => {
+    const inputs = renameInputs[installer.id]
+    if (!inputs?.name?.trim()) return
+    setRenameSaving(installer.id)
+    try {
+      const res = await fetch(`${API}/api/calendar/installers/${installer.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: inputs.name.trim(), initials: inputs.initials?.trim() }),
+      })
+      if (!res.ok) throw new Error('Rename failed')
+      setRenaming(null)
+      await fetchInstallers()
+    } catch (err) { console.error(err) }
+    finally { setRenameSaving(null) }
   }
 
   useEffect(() => { fetchJobs(); fetchInstallers() }, [fetchJobs, fetchInstallers])
@@ -335,19 +372,80 @@ export default function AdminPage() {
             <div style={{ padding: 24, textAlign: 'center', color: '#888', fontSize: 13 }}>No installers yet.</div>
           ) : (
             <div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 80px', gap: 12, padding: '10px 20px', background: '#f9f9f8', borderBottom: '1px solid #e0e0de', fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                <div>Name</div><div>Initials</div><div></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 200px', gap: 12, padding: '10px 20px', background: '#f9f9f8', borderBottom: '1px solid #e0e0de', fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <div>Name</div><div>Initials</div><div>Actions</div>
               </div>
               {installers.map(installer => (
-                <div key={installer.id} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 80px', gap: 12, padding: '11px 20px', borderBottom: '1px solid #f0f0ee', alignItems: 'center' }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: '#1a1a1a' }}>{installer.name}</div>
-                  <div style={{ fontSize: 12, color: '#888', fontFamily: 'monospace' }}>{installer.initials || '—'}</div>
-                  <div>
-                    <button onClick={() => handleRemoveInstaller(installer.id)} disabled={removingInstaller === installer.id}
-                      style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: '1px solid #f5c2c2', background: '#fff5f5', color: '#A32D2D', cursor: 'pointer' }}>
-                      {removingInstaller === installer.id ? '…' : 'Remove'}
-                    </button>
+                <div key={installer.id}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 200px', gap: 12, padding: '11px 20px', borderBottom: deleteWarning?.id === installer.id ? 'none' : '1px solid #f0f0ee', alignItems: 'center', background: deleteWarning?.id === installer.id ? '#fff8f0' : renaming === installer.id ? '#f0faf5' : '#fff' }}>
+                    {renaming === installer.id ? (
+                      <>
+                        <input
+                          value={renameInputs[installer.id]?.name ?? installer.name}
+                          onChange={e => setRenameInputs(p => ({ ...p, [installer.id]: { ...p[installer.id], name: e.target.value } }))}
+                          style={{ fontSize: 13, padding: '5px 8px', borderRadius: 6, border: '1px solid #b6dfc9', outline: 'none' }}
+                          autoFocus
+                          onKeyDown={e => { if (e.key === 'Escape') setRenaming(null) }}
+                        />
+                        <input
+                          value={renameInputs[installer.id]?.initials ?? installer.initials}
+                          onChange={e => setRenameInputs(p => ({ ...p, [installer.id]: { ...p[installer.id], initials: e.target.value } }))}
+                          style={{ fontSize: 13, padding: '5px 8px', borderRadius: 6, border: '1px solid #b6dfc9', outline: 'none', fontFamily: 'monospace' }}
+                          onKeyDown={e => { if (e.key === 'Escape') setRenaming(null) }}
+                        />
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={() => handleRenameInstaller(installer)} disabled={renameSaving === installer.id}
+                            style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: 'none', background: renameSaving === installer.id ? '#aaa' : '#036A43', color: '#fff', cursor: 'pointer', fontWeight: 500 }}>
+                            {renameSaving === installer.id ? '…' : 'Save'}
+                          </button>
+                          <button onClick={() => setRenaming(null)}
+                            style={{ fontSize: 12, padding: '4px 8px', borderRadius: 5, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: '#1a1a1a' }}>{installer.name}</div>
+                        <div style={{ fontSize: 12, color: '#888', fontFamily: 'monospace' }}>{installer.initials || '—'}</div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={() => { setRenaming(installer.id); setDeleteWarning(null); setRenameInputs(p => ({ ...p, [installer.id]: { name: installer.name, initials: installer.initials } })) }}
+                            style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: '1px solid #b6dfc9', background: '#f0faf5', color: '#036A43', cursor: 'pointer' }}>
+                            ✏️ Rename
+                          </button>
+                          <button onClick={() => handleRemoveInstaller(installer.id, installer.name)} disabled={removingInstaller === installer.id}
+                            style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: '1px solid #f5c2c2', background: '#fff5f5', color: '#A32D2D', cursor: 'pointer' }}>
+                            {removingInstaller === installer.id ? '…' : 'Remove'}
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
+                  {deleteWarning?.id === installer.id && (
+                    <div style={{ padding: '12px 20px', background: '#fff8f0', borderBottom: '1px solid #f0f0ee', borderTop: '1px solid #fde8cc' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#854F0B', marginBottom: 8 }}>
+                        ⚠ "{deleteWarning.name}" is assigned to {deleteWarning.affectedJobs.length} job{deleteWarning.affectedJobs.length !== 1 ? 's' : ''}:
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                        {deleteWarning.affectedJobs.map((j: any) => (
+                          <span key={j.lp_job_id} style={{ fontSize: 11, background: '#fde8cc', color: '#854F0B', borderRadius: 4, padding: '2px 8px' }}>{j.name}</span>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
+                        Removing will keep their suggestion text as-is. Update those jobs manually afterward.
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => handleForceRemove(installer.id)} disabled={removingInstaller === installer.id}
+                          style={{ fontSize: 12, padding: '5px 12px', borderRadius: 5, border: 'none', background: '#A32D2D', color: '#fff', cursor: 'pointer', fontWeight: 500 }}>
+                          {removingInstaller === installer.id ? '…' : 'Remove Anyway'}
+                        </button>
+                        <button onClick={() => setDeleteWarning(null)}
+                          style={{ fontSize: 12, padding: '5px 10px', borderRadius: 5, border: '1px solid #ddd', background: '#fff', color: '#555', cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
