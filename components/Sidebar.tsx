@@ -10,6 +10,7 @@ const navItems = [
   { label: 'Production Board', href: '/' },
   { label: 'Calendar', href: '/calendar' },
   { label: 'KPI Dashboard', href: '/kpi' },
+  { label: 'Reports', href: '/reports' },
   { label: 'Installers', href: '/installers' },
   { label: 'Admin', href: '/admin' },
 ]
