@@ -89,7 +89,7 @@ export default function ReportsPage() {
         <div className="no-print" style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '0 24px', display: 'flex', gap: 0 }}>
           {([['financial', 'Financial Summary'], ['mismeasure', 'Mismeasure Report']] as [ReportTab, string][]).map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
-              style={{ padding: '12px 20px', fontSize: 13, fontWeight: tab === key ? 600 : 400, color: tab === key ? '#036A43' : '#888', borderBottom: tab === key ? '2px solid #036A43' : '2px solid transparent', background: 'none', border: 'none', borderBottom: tab === key ? '2px solid #036A43' : '2px solid transparent', cursor: 'pointer' }}>
+              style={{ padding: '12px 20px', fontSize: 13, fontWeight: tab === key ? 600 : 400, color: tab === key ? '#036A43' : '#888', borderBottom: tab === key ? '2px solid #036A43' : '2px solid transparent', background: 'none', border: 'none', cursor: 'pointer' }}>
               {label}
             </button>
           ))}
