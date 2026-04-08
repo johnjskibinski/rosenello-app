@@ -62,6 +62,11 @@ export default function AdminPage() {
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<any>(null)
 
+  // CSV import state
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [csvImporting, setCsvImporting] = useState(false)
+  const [csvResult, setCsvResult] = useState<any>(null)
+
   const fetchJobs = useCallback(async () => {
     setLoading(true)
     try {
@@ -142,6 +147,31 @@ export default function AdminPage() {
       await fetchInstallers()
     } catch (err) { console.error(err) }
     finally { setRenameSaving(null) }
+  }
+
+  const handleCsvImport = async () => {
+    if (!csvFile) return
+    setCsvImporting(true)
+    setCsvResult(null)
+    try {
+      const text = await csvFile.text()
+      const res = await fetch(`${API}/api/costs/import-csv`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csv: text }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Import failed')
+      setCsvResult(data)
+      setCsvFile(null)
+      // reset file input
+      const input = document.getElementById('csv-file-input') as HTMLInputElement
+      if (input) input.value = ''
+    } catch (err: any) {
+      setCsvResult({ error: err.message })
+    } finally {
+      setCsvImporting(false)
+    }
   }
 
   useEffect(() => { fetchJobs(); fetchInstallers() }, [fetchJobs, fetchInstallers])
@@ -254,6 +284,73 @@ export default function AdminPage() {
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Admin</div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#1a1a1a' }}>Settings & Tools</h1>
+        </div>
+
+        {/* LP Cost CSV Import */}
+        <div style={{ background: '#fff', border: '1px solid #e0e0de', borderRadius: 10, marginBottom: 20 }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #e0e0de' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a1a' }}>💰 LP Cost CSV Import</div>
+            <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>
+              Export the line-item cost report from LP with a wide date range (go back 18+ months) and upload it here.
+              Each import fully replaces cost data for the jobs included in the file — safe to run as often as needed.
+            </div>
+          </div>
+          <div style={{ padding: '16px 20px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              id="csv-file-input"
+              type="file"
+              accept=".csv"
+              onChange={e => { setCsvFile(e.target.files?.[0] || null); setCsvResult(null) }}
+              style={{ fontSize: 13, color: '#333', flex: 1, minWidth: 200 }}
+            />
+            <button
+              onClick={handleCsvImport}
+              disabled={!csvFile || csvImporting}
+              style={{
+                fontSize: 13, padding: '8px 20px', borderRadius: 6, border: 'none',
+                background: !csvFile || csvImporting ? '#aaa' : '#036A43',
+                color: '#fff', cursor: !csvFile || csvImporting ? 'not-allowed' : 'pointer',
+                fontWeight: 600, whiteSpace: 'nowrap'
+              }}
+            >
+              {csvImporting ? '⏳ Importing…' : '⬆ Import CSV'}
+            </button>
+          </div>
+          {csvFile && !csvImporting && !csvResult && (
+            <div style={{ padding: '0 20px 14px', fontSize: 12, color: '#888' }}>
+              Ready to import: <strong style={{ color: '#333' }}>{csvFile.name}</strong> ({(csvFile.size / 1024).toFixed(1)} KB)
+            </div>
+          )}
+          {csvImporting && (
+            <div style={{ padding: '0 20px 14px', fontSize: 12, color: '#888' }}>
+              Importing — this may take 30–60 seconds for large files…
+            </div>
+          )}
+          {csvResult && (
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #e0e0de', fontSize: 13 }}>
+              {csvResult.error ? (
+                <div style={{ color: '#A32D2D', fontWeight: 500 }}>✗ {csvResult.error}</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ color: '#036A43', fontWeight: 600 }}>
+                    ✓ Import complete
+                  </div>
+                  <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 12, color: '#555' }}>
+                    <span>Jobs affected: <strong>{csvResult.jobsAffected}</strong></span>
+                    <span>Rows imported: <strong>{csvResult.rowsImported}</strong></span>
+                    {csvResult.mismeasuresCreated > 0 && (
+                      <span>Mismeasures logged: <strong>{csvResult.mismeasuresCreated}</strong></span>
+                    )}
+                  </div>
+                  {csvResult.unknownMatTypes?.length > 0 && (
+                    <div style={{ fontSize: 12, color: '#854F0B', background: '#fff8f0', borderRadius: 6, padding: '8px 12px', marginTop: 4 }}>
+                      ⚠ Unknown mat types (not classified): {csvResult.unknownMatTypes.join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* CompanyCam Link Manager */}
