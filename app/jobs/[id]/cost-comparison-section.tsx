@@ -47,8 +47,8 @@ export default function CostComparisonSection({ lpJobId, jobStatus, completedAt,
   const estimated = costs.filter(c => c.cost_type === 'estimated')
   const actual = costs.filter(c => c.cost_type === 'actual')
 
-  const estMaterials = estimated.find(c => c.category === 'Materials')?.total_cost ?? null
-  const estLabor = estimated.find(c => c.category === 'Labor')?.total_cost ?? null
+  const estMaterials = estimated.filter(c => c.category === 'Materials').reduce((s, r) => s + r.total_cost, 0) || null
+  const estLabor = estimated.filter(c => c.category === 'Labor').reduce((s, r) => s + r.total_cost, 0) || null
   const estTotal = (estMaterials ?? 0) + (estLabor ?? 0)
 
   const actMaterials = actual.filter(c => c.category === 'Materials').reduce((s, r) => s + r.total_cost, 0)
