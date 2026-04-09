@@ -34,6 +34,7 @@ export default function ReportsPage() {
   const [laborType, setLaborType] = useState('both')
   const [errorType, setErrorType] = useState('')
   const [mmStatus, setMmStatus] = useState('')
+  const [expandedPeriods, setExpandedPeriods] = useState<Set<string>>(new Set())
 
   const runReport = useCallback(async () => {
     setLoading(true)
@@ -63,6 +64,15 @@ export default function ReportsPage() {
 
   const toggleProduct = (p: string) => {
     setSelectedProducts(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])
+  }
+
+  const togglePeriod = (period: string) => {
+    setExpandedPeriods(prev => {
+      const next = new Set(prev)
+      if (next.has(period)) next.delete(period)
+      else next.add(period)
+      return next
+    })
   }
 
   const labelStyle = { fontSize: 11, color: '#888', fontWeight: 500, marginBottom: 4, display: 'block' as const }
@@ -202,7 +212,7 @@ export default function ReportsPage() {
           )}
 
           {!loading && data && tab === 'financial' && (
-            <FinancialReport data={data} />
+            <FinancialReport data={data} expandedPeriods={expandedPeriods} togglePeriod={togglePeriod} />
           )}
 
           {!loading && data && tab === 'mismeasure' && (
@@ -230,7 +240,7 @@ export default function ReportsPage() {
   )
 }
 
-function FinancialReport({ data }: { data: any }) {
+function FinancialReport({ data, expandedPeriods, togglePeriod }: { data: any, expandedPeriods: Set<string>, togglePeriod: (p: string) => void }) {
   const { rows, summary } = data
   if (!rows?.length) return <div style={{ textAlign: 'center', padding: 60, color: '#888' }}>No data for selected filters</div>
 
@@ -279,24 +289,55 @@ function FinancialReport({ data }: { data: any }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r: any) => (
-              <tr key={r.period} style={{ borderBottom: '1px solid #f5f5f5' }}>
-                <td style={tdL}>{r.period}</td>
-                <td style={tdStyle}>{r.job_count}</td>
-                <td style={tdStyle}>{fmt(r.gross)}</td>
-                <td style={tdStyle}>{fmt(r.materials)}</td>
-                <td style={tdStyle}>{fmt(r.labor_inhouse)}</td>
-                <td style={tdStyle}>{fmt(r.labor_sub)}</td>
-                <td style={{ ...tdStyle, color: r.labor_ambiguous > 0 ? '#f0a500' : '#333' }}>{fmt(r.labor_ambiguous)}</td>
-                <td style={tdStyle}>{fmt(r.commission)}</td>
-                <td style={tdStyle}>{fmt(r.finance)}</td>
-                <td style={{ ...tdStyle, color: r.mismeasure > 0 ? '#c0392b' : '#333' }}>{fmt(r.mismeasure)}</td>
-                <td style={{ ...tdStyle, color: r.other > 0 ? '#888' : '#333' }}>{fmt(r.other)}</td>
-                <td style={tdStyle}>{fmt(r.total_cost)}</td>
-                <td style={{ ...tdStyle, color: r.gross_profit > 0 ? '#036A43' : '#c0392b', fontWeight: 600 }}>{fmt(r.gross_profit)}</td>
-                <td style={{ ...tdStyle, color: r.margin_pct > 30 ? '#036A43' : r.margin_pct > 15 ? '#f0a500' : '#c0392b', fontWeight: 600 }}>{fmtP(r.margin_pct)}</td>
-              </tr>
-            ))}
+            {rows.map((r: any) => {
+              const expanded = expandedPeriods.has(r.period)
+              return (
+                <>
+                  <tr key={r.period} onClick={() => togglePeriod(r.period)} style={{ borderBottom: '1px solid #f5f5f5', cursor: 'pointer', background: expanded ? '#f0faf5' : '#fff' }}>
+                    <td style={tdL}>
+                      <span style={{ marginRight: 6, color: '#036A43', fontSize: 11 }}>{expanded ? '▼' : '▶'}</span>
+                      {r.period}
+                    </td>
+                    <td style={tdStyle}>{r.job_count}</td>
+                    <td style={tdStyle}>{fmt(r.gross)}</td>
+                    <td style={tdStyle}>{fmt(r.materials)}</td>
+                    <td style={tdStyle}>{fmt(r.labor_inhouse)}</td>
+                    <td style={tdStyle}>{fmt(r.labor_sub)}</td>
+                    <td style={{ ...tdStyle, color: r.labor_ambiguous > 0 ? '#f0a500' : '#333' }}>{fmt(r.labor_ambiguous)}</td>
+                    <td style={tdStyle}>{fmt(r.commission)}</td>
+                    <td style={tdStyle}>{fmt(r.finance)}</td>
+                    <td style={{ ...tdStyle, color: r.mismeasure > 0 ? '#c0392b' : '#333' }}>{fmt(r.mismeasure)}</td>
+                    <td style={{ ...tdStyle, color: r.other > 0 ? '#888' : '#333' }}>{fmt(r.other)}</td>
+                    <td style={tdStyle}>{fmt(r.total_cost)}</td>
+                    <td style={{ ...tdStyle, color: r.gross_profit > 0 ? '#036A43' : '#c0392b', fontWeight: 600 }}>{fmt(r.gross_profit)}</td>
+                    <td style={{ ...tdStyle, color: r.margin_pct > 30 ? '#036A43' : r.margin_pct > 15 ? '#f0a500' : '#c0392b', fontWeight: 600 }}>{fmtP(r.margin_pct)}</td>
+                  </tr>
+                  {expanded && (r.job_rows || []).map((j: any) => (
+                    <tr key={j.lp_job_id}
+                      onClick={() => window.location.href = `/jobs/${j.lp_job_id}`}
+                      style={{ borderBottom: '1px solid #f0f0f0', background: '#fafff9', cursor: 'pointer' }}>
+                      <td style={{ ...tdL, paddingLeft: 28, fontSize: 12 }}>
+                        <span style={{ color: '#036A43', fontWeight: 600 }}>{j.customer}</span>
+                        <span style={{ color: '#aaa', fontSize: 11, marginLeft: 6 }}>{j.contract_id}</span>
+                      </td>
+                      <td style={{ ...tdStyle, fontSize: 12, color: '#888' }}>{j.completed_at}</td>
+                      <td style={{ ...tdStyle, fontSize: 12 }}>{fmt(j.gross)}</td>
+                      <td style={{ ...tdStyle, fontSize: 12 }}>{fmt(j.materials)}</td>
+                      <td style={{ ...tdStyle, fontSize: 12 }}>{fmt(j.labor_inhouse)}</td>
+                      <td style={{ ...tdStyle, fontSize: 12 }}>{fmt(j.labor_sub)}</td>
+                      <td style={{ ...tdStyle, fontSize: 12, color: j.labor_ambiguous > 0 ? '#f0a500' : '#333' }}>{fmt(j.labor_ambiguous)}</td>
+                      <td style={{ ...tdStyle, fontSize: 12 }}>{fmt(j.commission)}</td>
+                      <td style={{ ...tdStyle, fontSize: 12 }}>{fmt(j.finance)}</td>
+                      <td style={{ ...tdStyle, fontSize: 12, color: j.mismeasure > 0 ? '#c0392b' : '#333' }}>{fmt(j.mismeasure)}</td>
+                      <td style={{ ...tdStyle, fontSize: 12, color: j.other > 0 ? '#888' : '#333' }}>{fmt(j.other)}</td>
+                      <td style={{ ...tdStyle, fontSize: 12 }}>{fmt(j.total_cost)}</td>
+                      <td style={{ ...tdStyle, fontSize: 12, color: j.gross_profit > 0 ? '#036A43' : '#c0392b', fontWeight: 600 }}>{fmt(j.gross_profit)}</td>
+                      <td style={{ ...tdStyle, fontSize: 12, color: j.margin_pct > 30 ? '#036A43' : j.margin_pct > 15 ? '#f0a500' : '#c0392b', fontWeight: 600 }}>{fmtP(j.margin_pct)}</td>
+                    </tr>
+                  ))}
+                </>
+              )
+            })}
           </tbody>
           <tfoot>
             <tr style={{ background: '#f8f8f8', fontWeight: 700 }}>
