@@ -66,6 +66,9 @@ export default function AdminPage() {
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [csvImporting, setCsvImporting] = useState(false)
   const [csvResult, setCsvResult] = useState<any>(null)
+  const [unclassifiedLabor, setUnclassifiedLabor] = useState<any[]>([])
+  const [laborLoading, setLaborLoading] = useState(false)
+  const [classifying, setClassifying] = useState<string | null>(null)
 
   const fetchJobs = useCallback(async () => {
     setLoading(true)
@@ -89,6 +92,30 @@ export default function AdminPage() {
     } catch (err) { console.error(err) }
     finally { setInstallerLoading(false) }
   }, [])
+
+  const fetchUnclassifiedLabor = useCallback(async () => {
+    setLaborLoading(true)
+    try {
+      const res = await fetch(`${API}/api/costs/unclassified-labor`)
+      const data = await res.json()
+      if (Array.isArray(data)) setUnclassifiedLabor(data)
+    } catch (err) { console.error(err) }
+    finally { setLaborLoading(false) }
+  }, [])
+
+  const classifyLabor = async (id: string, is_sub: boolean) => {
+    setClassifying(id)
+    try {
+      const res = await fetch(`${API}/api/costs/${id}/classify`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_sub })
+      })
+      if (!res.ok) throw new Error('Failed')
+      setUnclassifiedLabor(prev => prev.filter(r => r.id !== id))
+    } catch (err) { console.error(err) }
+    finally { setClassifying(null) }
+  }
 
   const handleAddInstaller = async () => {
     if (!newInstallerName.trim()) return
@@ -601,6 +628,53 @@ export default function AdminPage() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+        </div>
+
+
+        {/* Unclassified Labor */}
+        <div style={{ background: '#fff', border: '1px solid #e0e0de', borderRadius: 10, marginBottom: 20 }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #e0e0de', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a1a' }}>⚠️ Unclassified Labor</div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>Labor cost rows with no comments — classify each as In-House or Sub</div>
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: unclassifiedLabor.length > 0 ? '#f0a500' : '#036A43' }}>
+              {laborLoading ? '…' : `${unclassifiedLabor.length} remaining`}
+            </div>
+          </div>
+          {laborLoading ? (
+            <div style={{ padding: 24, textAlign: 'center', color: '#888', fontSize: 13 }}>Loading…</div>
+          ) : unclassifiedLabor.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', color: '#036A43', fontSize: 13, fontWeight: 500 }}>✓ All labor rows classified</div>
+          ) : (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 80px 100px 160px', gap: 12, padding: '10px 20px', background: '#f9f9f8', borderBottom: '1px solid #e0e0de', fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>
+                <div>Job</div><div>Customer</div><div>Amount</div><div>Date</div><div>Classify</div>
+              </div>
+              {unclassifiedLabor.map((r: any) => (
+                <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 80px 100px 160px', gap: 12, padding: '10px 20px', borderBottom: '1px solid #f0f0ee', alignItems: 'center', fontSize: 13 }}>
+                  <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#555' }}>{r.job?.contract_id || r.lp_job_id}</div>
+                  <div style={{ fontWeight: 500 }}>{r.job ? `${r.job.customer_first} ${r.job.customer_last}` : '—'}</div>
+                  <div style={{ color: '#333' }}>${r.total_cost?.toFixed(2)}</div>
+                  <div style={{ fontSize: 12, color: '#888' }}>{r.invoice_date || '—'}</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => classifyLabor(r.id, false)}
+                      disabled={classifying === r.id}
+                      style={{ fontSize: 11, padding: '4px 10px', borderRadius: 5, border: '1px solid #b6dfc9', background: '#f0faf5', color: '#036A43', cursor: 'pointer', fontWeight: 600 }}>
+                      In-House
+                    </button>
+                    <button
+                      onClick={() => classifyLabor(r.id, true)}
+                      disabled={classifying === r.id}
+                      style={{ fontSize: 11, padding: '4px 10px', borderRadius: 5, border: '1px solid #ddd', background: '#f5f5f5', color: '#555', cursor: 'pointer', fontWeight: 600 }}>
+                      Sub
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
