@@ -201,7 +201,7 @@ export default function AdminPage() {
     }
   }
 
-  useEffect(() => { fetchJobs(); fetchInstallers() }, [fetchJobs, fetchInstallers])
+  useEffect(() => { fetchJobs(); fetchInstallers(); fetchUnclassifiedLabor() }, [fetchJobs, fetchInstallers, fetchUnclassifiedLabor])
 
   const twoMonthsAgo = new Date()
   twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2)
