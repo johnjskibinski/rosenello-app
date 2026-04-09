@@ -264,9 +264,11 @@ function FinancialReport({ data }: { data: any }) {
               <th style={thStyle}>Materials</th>
               <th style={thStyle}>Labor (IH)</th>
               <th style={thStyle}>Labor (Sub)</th>
+              <th style={thStyle}>Labor (?)</th>
               <th style={thStyle}>Commission</th>
               <th style={thStyle}>Finance</th>
               <th style={thStyle}>Mismeasure</th>
+              <th style={thStyle}>Other</th>
               <th style={thStyle}>Total Cost</th>
               <th style={thStyle}>GP</th>
               <th style={thStyle}>Margin</th>
@@ -281,9 +283,11 @@ function FinancialReport({ data }: { data: any }) {
                 <td style={tdStyle}>{fmt(r.materials)}</td>
                 <td style={tdStyle}>{fmt(r.labor_inhouse)}</td>
                 <td style={tdStyle}>{fmt(r.labor_sub)}</td>
+                <td style={{ ...tdStyle, color: r.labor_ambiguous > 0 ? '#f0a500' : '#333' }}>{fmt(r.labor_ambiguous)}</td>
                 <td style={tdStyle}>{fmt(r.commission)}</td>
                 <td style={tdStyle}>{fmt(r.finance)}</td>
                 <td style={{ ...tdStyle, color: r.mismeasure > 0 ? '#c0392b' : '#333' }}>{fmt(r.mismeasure)}</td>
+                <td style={{ ...tdStyle, color: r.other > 0 ? '#888' : '#333' }}>{fmt(r.other)}</td>
                 <td style={tdStyle}>{fmt(r.total_cost)}</td>
                 <td style={{ ...tdStyle, color: r.gross_profit > 0 ? '#036A43' : '#c0392b', fontWeight: 600 }}>{fmt(r.gross_profit)}</td>
                 <td style={{ ...tdStyle, color: r.margin_pct > 30 ? '#036A43' : r.margin_pct > 15 ? '#f0a500' : '#c0392b', fontWeight: 600 }}>{fmtP(r.margin_pct)}</td>
@@ -298,7 +302,7 @@ function FinancialReport({ data }: { data: any }) {
               <td style={{ ...tdStyle, fontWeight: 700 }}>{fmt(summary.materials)}</td>
               <td style={{ ...tdStyle, fontWeight: 700 }}>{fmt(summary.labor_inhouse)}</td>
               <td style={{ ...tdStyle, fontWeight: 700 }}>{fmt(summary.labor_sub)}</td>
-              <td colSpan={3} />
+              <td colSpan={5} />
               <td style={{ ...tdStyle, fontWeight: 700 }}>{fmt(summary.total_cost)}</td>
               <td style={{ ...tdStyle, fontWeight: 700, color: summary.gross_profit > 0 ? '#036A43' : '#c0392b' }}>{fmt(summary.gross_profit)}</td>
               <td style={{ ...tdStyle, fontWeight: 700, color: summary.margin_pct > 30 ? '#036A43' : '#f0a500' }}>{fmtP(summary.margin_pct)}</td>
