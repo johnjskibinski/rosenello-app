@@ -18,7 +18,7 @@ const ninetyDaysAgo = () => {
 
 const today = () => new Date().toISOString().split('T')[0]
 
-type ReportTab = 'financial' | 'mismeasure'
+type ReportTab = 'financial' | 'mismeasure' | 'variance'
 
 export default function ReportsPage() {
   const [tab, setTab] = useState<ReportTab>('financial')
@@ -87,7 +87,7 @@ export default function ReportsPage() {
 
         {/* Tabs */}
         <div className="no-print" style={{ background: '#fff', borderBottom: '1px solid #eee', padding: '0 24px', display: 'flex', gap: 0 }}>
-          {([['financial', 'Financial Summary'], ['mismeasure', 'Mismeasure Report']] as [ReportTab, string][]).map(([key, label]) => (
+          {([['financial', 'Financial Summary'], ['mismeasure', 'Mismeasure Report'], ['variance', 'Est vs Actual']] as [ReportTab, string][]).map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
               style={{ padding: '12px 20px', fontSize: 13, fontWeight: tab === key ? 600 : 400, color: tab === key ? '#036A43' : '#888', borderBottom: tab === key ? '2px solid #036A43' : '2px solid transparent', background: 'none', border: 'none', cursor: 'pointer' }}>
               {label}
@@ -209,6 +209,10 @@ export default function ReportsPage() {
             <MismeasureReport data={data} />
           )}
 
+          {!loading && data && tab === 'variance' && (
+            <VarianceReport data={data} />
+          )}
+
           {!loading && !data && (
             <div style={{ textAlign: 'center', padding: 60, color: '#888', fontSize: 14 }}>Set filters and click Run Report</div>
           )}
@@ -308,6 +312,74 @@ function FinancialReport({ data }: { data: any }) {
               <td style={{ ...tdStyle, fontWeight: 700, color: summary.margin_pct > 30 ? '#036A43' : '#f0a500' }}>{fmtP(summary.margin_pct)}</td>
             </tr>
           </tfoot>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function VarianceReport({ data }: { data: any }) {
+  const { rows, summary } = data
+  if (!rows?.length) return <div style={{ textAlign: 'center', padding: 60, color: '#888' }}>No jobs with both estimated and actual costs for selected filters. Upload measure sheets and import a cost CSV to populate this report.</div>
+
+  const thStyle = { textAlign: 'right' as const, padding: '8px 12px', fontSize: 11, color: '#888', fontWeight: 600, borderBottom: '1px solid #eee', whiteSpace: 'nowrap' as const }
+  const tdStyle = { textAlign: 'right' as const, padding: '8px 12px', fontSize: 13, color: '#333', borderBottom: '1px solid #f5f5f5' }
+  const tdL = { ...tdStyle, textAlign: 'left' as const }
+
+  return (
+    <div>
+      {/* Summary cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, marginBottom: 20 }}>
+        {[
+          { label: 'Jobs', val: summary.job_count },
+          { label: 'Total Estimated', val: fmt(summary.total_estimated) },
+          { label: 'Total Actual', val: fmt(summary.total_actual) },
+          { label: 'Total Variance', val: fmt(summary.total_variance), color: summary.total_variance > 0 ? '#c0392b' : '#036A43' },
+          { label: 'Over Budget', val: summary.over_budget, color: summary.over_budget > 0 ? '#c0392b' : '#333' },
+          { label: 'Under Budget', val: summary.under_budget, color: '#036A43' },
+        ].map(c => (
+          <div key={c.label} style={{ background: '#fff', borderRadius: 8, padding: '14px 16px', border: '1px solid #eee' }}>
+            <div style={{ fontSize: 11, color: '#888', fontWeight: 500, marginBottom: 6 }}>{c.label}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: (c as any).color || '#1a1a1a' }}>{c.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #eee', overflow: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: '#f8f8f8' }}>
+              <th style={{ ...thStyle, textAlign: 'left' }}>Customer</th>
+              <th style={{ ...thStyle, textAlign: 'left' }}>Contract</th>
+              <th style={{ ...thStyle, textAlign: 'left' }}>Product</th>
+              <th style={{ ...thStyle, textAlign: 'left' }}>Completed</th>
+              <th style={thStyle}>Gross</th>
+              <th style={thStyle}>Estimated</th>
+              <th style={thStyle}>Actual</th>
+              <th style={thStyle}>Variance $</th>
+              <th style={thStyle}>Variance %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r: any) => (
+              <tr key={r.lp_job_id} style={{ borderBottom: '1px solid #f5f5f5' }}>
+                <td style={tdL}>{r.customer}</td>
+                <td style={tdL}><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{r.contract_id}</span></td>
+                <td style={tdL}>{r.product}</td>
+                <td style={tdL}>{r.completed_at}</td>
+                <td style={tdStyle}>{fmt(r.gross)}</td>
+                <td style={tdStyle}>{fmt(r.estimated)}</td>
+                <td style={tdStyle}>{fmt(r.actual)}</td>
+                <td style={{ ...tdStyle, fontWeight: 600, color: r.variance > 0 ? '#c0392b' : r.variance < 0 ? '#036A43' : '#333' }}>
+                  {r.variance > 0 ? '+' : ''}{fmt(r.variance)}
+                </td>
+                <td style={{ ...tdStyle, fontWeight: 600, color: r.variance_pct > 0 ? '#c0392b' : r.variance_pct < 0 ? '#036A43' : '#333' }}>
+                  {r.variance_pct != null ? (r.variance_pct > 0 ? '+' : '') + r.variance_pct + '%' : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
         </table>
       </div>
     </div>
