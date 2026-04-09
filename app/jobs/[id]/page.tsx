@@ -510,7 +510,7 @@ export default function JobDetail() {
             </div>
           )}
 
-          <CostComparisonSection lpJobId={job.lp_job_id} jobStatus={job.lp_status} completedAt={job.completed_at} />
+          <CostComparisonSection lpJobId={job.lp_job_id} jobStatus={job.lp_status} completedAt={job.completed_at} grossAmount={parseFloat(job.raw_lp_data?.grossamount || 0)} />
           <InstallerSuggestionSection lpJobId={job.lp_job_id} />
 
           <NotesSection lpJobId={job.lp_job_id} />
