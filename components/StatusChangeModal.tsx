@@ -42,7 +42,7 @@ export function StatusChangeModal({ jobId, currentStatus, customerName, onSucces
     setError(null);
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/jobs/${jobId}/status`,
+        `/api/proxy/api/jobs/${jobId}/status`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },

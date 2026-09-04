@@ -2,7 +2,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import Sidebar from '@/components/Sidebar'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+// All backend calls go through the authenticated Next.js proxy (app/api/proxy)
+const API_URL = '/api/proxy'
 
 const fmt = (n: number) => n != null ? `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—'
 const fmtD = (n: number) => n != null ? `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'

@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { getKpiUnitTotals } from '@/lib/api'
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://rosenello-production-production.up.railway.app'
+// All backend calls go through the authenticated Next.js proxy (app/api/proxy)
+const API = '/api/proxy'
 
 const METRICS = [
   { key: 'total_windows',  label: 'Windows',       color: '#3b82f6' },

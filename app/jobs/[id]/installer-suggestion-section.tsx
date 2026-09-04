@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://rosenello-production-production.up.railway.app'
+// All backend calls go through the authenticated Next.js proxy (app/api/proxy)
+const API = '/api/proxy'
 
 interface Installer {
   id: string

@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useRef, useEffect, useCallback } from 'react'
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://rosenello-production-production.up.railway.app'
+// All backend calls go through the authenticated Next.js proxy (app/api/proxy)
+const API = '/api/proxy'
 
 const navItems = [
   { label: 'Production Board', href: '/' },
@@ -168,6 +169,7 @@ function GlobalSearch() {
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
 
   return (
     <div style={{
@@ -227,8 +229,30 @@ export default function Sidebar() {
         borderTop: '1px solid rgba(255,255,255,0.15)',
         fontSize: 11,
         color: 'rgba(255,255,255,0.4)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
       }}>
-        John Skibinski
+        <span>John Skibinski</span>
+        <button
+          onClick={async () => {
+            await fetch('/api/login', { method: 'DELETE' })
+            router.replace('/login')
+            router.refresh()
+          }}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            fontSize: 11,
+            color: 'rgba(255,255,255,0.45)',
+            cursor: 'pointer',
+            textDecoration: 'underline',
+          }}
+        >
+          Sign out
+        </button>
       </div>
     </div>
   )

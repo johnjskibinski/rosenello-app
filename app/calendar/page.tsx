@@ -7,7 +7,8 @@ import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin, { Draggable } from '@fullcalendar/interaction'
 import Sidebar from '@/components/Sidebar'
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://rosenello-production-production.up.railway.app'
+// All backend calls go through the authenticated Next.js proxy (app/api/proxy)
+const API = '/api/proxy'
 
 const COLOR_MAP: Record<string, string> = {
   measure:   '#F6C026',

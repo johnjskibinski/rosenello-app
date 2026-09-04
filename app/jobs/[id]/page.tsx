@@ -7,7 +7,8 @@ import NotesSection from './notes-section'
 import InstallerSuggestionSection from './installer-suggestion-section'
 import CostComparisonSection from './cost-comparison-section'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+// All backend calls go through the authenticated Next.js proxy (app/api/proxy)
+const API_URL = '/api/proxy'
 
 const INSTALLERS = ['Jay W', 'Matt Burger', 'Mike', 'Joe', 'Scott', 'Ricardo', 'Mike K', 'Jeremiah Construction', 'Matus Construction', "Richy's Construction"]
 

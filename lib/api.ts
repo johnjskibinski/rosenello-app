@@ -1,4 +1,5 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+// All backend calls go through the authenticated Next.js proxy (app/api/proxy)
+const API_URL = '/api/proxy'
 
 export async function getJobs() {
   const res = await fetch(`${API_URL}/api/jobs`, {
@@ -17,7 +18,8 @@ export async function syncJobs() {
   return res.json()
 }
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'https://rosenello-production-production.up.railway.app'
+// All backend calls go through the authenticated Next.js proxy (app/api/proxy)
+const BASE = '/api/proxy'
 
 export async function uploadJobDocs(lpJobId: number) {
   const res = await fetch(`${BASE}/api/jobs/${lpJobId}/upload-docs`, { method: 'POST' })

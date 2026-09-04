@@ -3,7 +3,8 @@ import { useEffect, useState, useCallback } from 'react'
 import Sidebar from '@/components/Sidebar'
 import { STATUS_ORDER, STATUS_LABELS, TAB_LABELS, STATUS_BADGE_COLOR, STATUS_BADGE_TEXT } from '@/lib/statuses'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+// All backend calls go through the authenticated Next.js proxy (app/api/proxy)
+const API_URL = '/api/proxy'
 
 const PRODUCT_COLORS: Record<string, { bg: string; text: string }> = {
   Win: { bg: '#E6F1FB', text: '#185FA5' },
